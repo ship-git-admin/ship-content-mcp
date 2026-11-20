@@ -149,7 +149,7 @@ final class Diagnostics {
 	 */
 	private static function foreign_callbacks( string $hook ): array {
 		global $wp_filter;
-		$core = array( 'rest_cookie_check_errors', 'rest_application_password_check_errors' );
+		$core = array( 'rest_cookie_check_errors', 'rest_application_password_check_errors', 'rest_handle_options_request', 'ACF_Rest_Api::initialize' );
 		$out  = array();
 		if ( ! isset( $wp_filter[ $hook ] ) ) {
 			return $out;

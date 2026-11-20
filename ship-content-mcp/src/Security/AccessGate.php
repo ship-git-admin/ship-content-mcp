@@ -24,6 +24,8 @@ defined( 'ABSPATH' ) || exit;
 
 final class AccessGate {
 
+	private static bool $transport_logged = false;
+
 	/** MCP 用のユーザーが持っていてはいけない権限（どれか1つでもあれば拒否）。 */
 	public const PRIVILEGED_CAPS = array(
 		'manage_options',
@@ -65,7 +67,11 @@ final class AccessGate {
 			return true;
 		}
 		[ $code, $detail, $status ] = $problem;
-		AuditLog::write( 'transport', 'denied', $code, $detail );
+		// WordPress は Allow ヘッダーを作るために、同じリクエストでこの確認をメソッドごとに何度も呼ぶ。記録は1回だけ。
+		if ( ! self::$transport_logged ) {
+			self::$transport_logged = true;
+			AuditLog::write( 'transport', 'denied', $code, $detail );
+		}
 		return new \WP_Error( 'ship_content_mcp_denied', DomainError::MESSAGES[ $code ] . '（' . $code . '）', array( 'status' => $status ) );
 	}
 

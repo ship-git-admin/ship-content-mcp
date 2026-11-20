@@ -246,10 +246,12 @@ final class Command {
 		$pair    = sodium_crypto_sign_keypair();
 		$pk      = sodium_crypto_sign_publickey( $pair );
 		$sk      = sodium_crypto_sign_secretkey( $pair );
-		$msg     = SignatureCodec::canonical_request( 'POST', 'example.invalid', '/wp-json/ship-content/mcp', (string) time(), 'AAAAAAAAAAAAAAAAAAAAAA', 'k0123456789abcdef', '', '{"jsonrpc":"2.0"}' );
+		$ts      = (string) time();
+		$msg     = SignatureCodec::canonical_request( 'POST', 'example.invalid', '/wp-json/ship-content/mcp', $ts, 'AAAAAAAAAAAAAAAAAAAAAA', 'k0123456789abcdef', '', '{"jsonrpc":"2.0"}' );
 		$sig_raw = (string) base64_decode( SignatureCodec::sign( $msg, $sk ), true );
 		$this->check( 'T30 正しい署名は通る', SignatureCodec::verify( $sig_raw, $msg, $pk ) );
-		$this->check( 'T31 本文を変えると通らない', ! SignatureCodec::verify( $sig_raw, str_replace( 'jsonrpc', 'jsonrpx', $msg ), $pk ) );
+		$tampered = SignatureCodec::canonical_request( 'POST', 'example.invalid', '/wp-json/ship-content/mcp', $ts, 'AAAAAAAAAAAAAAAAAAAAAA', 'k0123456789abcdef', '', '{"jsonrpc":"2.1"}' );
+		$this->check( 'T31 本文を変えると通らない', $tampered !== $msg && ! SignatureCodec::verify( $sig_raw, $tampered, $pk ) );
 		$this->check( 'T32 古い時刻は通らない', ! SignatureCodec::fresh( (string) ( time() - 301 ), time() ) && SignatureCodec::fresh( (string) ( time() - 299 ), time() ) );
 		$test_key = 'k' . bin2hex( random_bytes( 8 ) );
 		$nonce    = rtrim( strtr( base64_encode( random_bytes( 18 ) ), '+/', '-_' ), '=' );
