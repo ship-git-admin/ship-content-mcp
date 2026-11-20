@@ -33,7 +33,7 @@ import { realpathSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
-export const VERSION = '0.3.0-dev';
+export const VERSION = '0.4.0-dev';
 export const REQ_PREFIX = 'ship-content-mcp-req-v1';
 export const RES_PREFIX = 'ship-content-mcp-res-v1';
 const SPKI_ED25519_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');

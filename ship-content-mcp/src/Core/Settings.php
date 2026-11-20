@@ -107,6 +107,21 @@ final class Settings {
 					'enabled' => self::bool( $row['enabled'] ?? false ),
 					'status'  => isset( self::STATUSES[ $status ] ) ? $status : 'unverified',
 				);
+				// 管理者が確かめた構造（グループ key => 指紋）。試験合格・稼働のとき、これと違う構造には書かない。
+				$verified = $row['verified'] ?? null;
+				if ( is_array( $verified ) && is_array( $verified['groups'] ?? null ) ) {
+					$groups = array();
+					foreach ( $verified['groups'] as $key => $hash ) {
+						if ( 1 === preg_match( '/^group_[A-Za-z0-9_]+$/', (string) $key ) && 1 === preg_match( '/^sha256:[0-9a-f]{64}$/', (string) $hash ) ) {
+							$groups[ (string) $key ] = (string) $hash;
+						}
+					}
+					$out['post_types'][ $name ]['verified'] = array(
+						'groups' => $groups,
+						'at'     => (int) ( $verified['at'] ?? 0 ),
+						'by'     => (int) ( $verified['by'] ?? 0 ),
+					);
+				}
 			}
 		} elseif ( ! $use_default_types ) {
 			$out['post_types'] = array();

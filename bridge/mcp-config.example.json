@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "ship-content-example": {
+      "command": "node",
+      "args": ["/Users/you/ship-content-mcp/ship-content-mcp-bridge.mjs"],
+      "env": {
+        "SHIP_MCP_URL": "https://example.invalid/wp-json/ship-content/mcp",
+        "SHIP_MCP_KEY_ID": "k0123456789abcdef",
+        "SHIP_MCP_KEY_FILE": "/Users/you/.ship-content-mcp/example.key",
+        "SHIP_MCP_SERVER_KEY": "サイトの公開鍵（管理画面の「端末の鍵」に表示）",
+        "SHIP_MCP_UPLOAD_DIRS": "/Users/you/Pictures/施工写真"
+      }
+    }
+  }
+}

@@ -14,6 +14,7 @@ namespace ShipContentMcp\Admin;
 
 use ShipContentMcp\ACF\SchemaReader;
 use ShipContentMcp\Content\PostTypes;
+use ShipContentMcp\Content\StructureLock;
 use ShipContentMcp\Core\Consts;
 use ShipContentMcp\Core\Plugin;
 use ShipContentMcp\Core\Settings;
@@ -99,7 +100,7 @@ final class SettingsPage {
 		self::checkbox_row( 'enabled', 'MCP を受け付ける', $s['enabled'], 'オフの間は MCP の入口がありません。' );
 		self::checkbox_row( 'disable_default_server', '公式の既定サーバーを止める', $s['disable_default_server'], '既定サーバーは、公開の印が付いたほかの Ability まで出すことがあります。ほかに使う連携がなければ止めてください。' );
 		echo '<tr><th scope="row">使える投稿タイプ</th><td>';
-		echo '<table class="widefat striped" style="max-width:640px"><thead><tr><th>使う</th><th>投稿タイプ</th><th>状態</th></tr></thead><tbody>';
+		echo '<table class="widefat striped" style="max-width:900px"><thead><tr><th>使う</th><th>投稿タイプ</th><th>状態</th><th>確かめた構造</th></tr></thead><tbody>';
 		foreach ( PostTypes::candidates() as $name => $obj ) {
 			$row = $s['post_types'][ $name ] ?? array(
 				'enabled' => false,
@@ -110,9 +111,9 @@ final class SettingsPage {
 			foreach ( Settings::STATUSES as $value => $label ) {
 				echo '<option value="' . esc_attr( $value ) . '"' . selected( $row['status'], $value, false ) . '>' . esc_html( $label ) . '</option>';
 			}
-			echo '</select></td></tr>';
+			echo '</select></td><td>' . self::verified_cell( $name, $row ) . '</td></tr>';
 		}
-		echo '</tbody></table><p class="description">最初は works だけを使います。「未検証」は読み取りだけ。「試験中」で下書きの保存を試し（作った下書きに試験の印が付き、WP-CLI の cleanup-tests で片付けられます）、実機の試験に合格したら「試験合格」にしてください。</p></td></tr>';
+		echo '</tbody></table><p class="description">最初は works だけを使います。「未検証」は読み取りだけ。「試験中」で下書きの保存を試し（作った下書きに試験の印が付き、WP-CLI の cleanup-tests で片付けられます）、実機の試験に合格したら「試験合格」にしてください。「試験合格」「稼働」にしたときの入力欄（ACF）の構造を記録し、その後に構造が変わったら、確かめ直すまで書き込みを止めます。</p></td></tr>';
 		self::checkbox_row( 'reject_privileged', '権限の強いユーザーを拒否する', $s['reject_privileged'], '投稿の編集・公開・アップロード・設定変更などの権限を持つユーザーは、MCP で使えません（推奨）。PM には「' . Consts::ROLE_LABEL . '」のユーザーを使ってください。' );
 		self::checkbox_row( 'auth_signature', '端末の署名で認証する', $s['auth_signature'], 'パスワードを通信に乗せません。HTTP の動作確認URLや、Basic 認証のあるサイトでも使えます。' );
 		self::checkbox_row( 'auth_app_password', 'Application Password で認証する', $s['auth_app_password'], 'HTTPS のサイトだけで使えます（WordPress の決まり）。' );
@@ -229,9 +230,10 @@ final class SettingsPage {
 			'ng'   => '問題あり',
 			'info' => '情報',
 		);
-		echo '<p>表示するだけで、何も書き込みません。</p><table class="widefat striped"><thead><tr><th>項目</th><th>結果</th><th>内容</th></tr></thead><tbody>';
+		echo '<p>表示するだけで、何も書き込みません。この画面は管理者だけが見られます（PM には、エラーのコードと短い説明だけが伝わります）。</p><table class="widefat striped"><thead><tr><th>項目</th><th>結果</th><th>内容</th><th>対処</th></tr></thead><tbody>';
 		foreach ( Diagnostics::collect() as $row ) {
-			echo '<tr><td>' . esc_html( $row['label'] ) . '</td><td>' . esc_html( $labels[ $row['status'] ] ?? $row['status'] ) . '</td><td>' . esc_html( $row['detail'] ) . '</td></tr>';
+			$color = 'ng' === $row['status'] ? ' style="color:#b32d2e;font-weight:600"' : ( 'warn' === $row['status'] ? ' style="color:#996800;font-weight:600"' : '' );
+			echo '<tr><td>' . esc_html( $row['label'] ) . '</td><td' . $color . '>' . esc_html( $labels[ $row['status'] ] ?? $row['status'] ) . '</td><td>' . esc_html( $row['detail'] ) . '</td><td>' . esc_html( $row['remedy'] ) . '</td></tr>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- $color は固定の文字列
 		}
 		echo '</tbody></table>';
 	}
@@ -277,8 +279,12 @@ final class SettingsPage {
 				'status'  => (string) ( $row['status'] ?? 'unverified' ),
 			);
 		}
-		$before = Settings::get();
-		$after  = Settings::save( $in );
+		$before  = Settings::get();
+		$reverify = isset( $_POST['reverify'] ) && is_array( $_POST['reverify'] ) ? array_map( 'sanitize_key', array_keys( wp_unslash( $_POST['reverify'] ) ) ) : array(); // phpcs:ignore WordPress.Security.NonceVerification.Missing,WordPress.Security.ValidatedSanitizedInput -- guard() で確認済み・キーだけ使う
+		foreach ( $in['post_types'] as $name => $row ) {
+			$in['post_types'][ $name ]['verified'] = StructureLock::next_verified( $name, (string) $row['status'], $before, in_array( $name, $reverify, true ) );
+		}
+		$after = Settings::save( $in );
 		AuditLog::write( 'admin', 'ok', '', 'settings saved' . ( $before['enabled'] !== $after['enabled'] ? ( $after['enabled'] ? ' (enabled)' : ' (disabled)' ) : '' ) );
 		self::back( 'settings', 'saved' );
 	}
@@ -331,6 +337,27 @@ final class SettingsPage {
 	}
 
 	// ---- 部品 -------------------------------------------------------------
+
+	/**
+	 * @param array<string,mixed> $row
+	 */
+	private static function verified_cell( string $name, array $row ): string {
+		$v = $row['verified'] ?? null;
+		if ( ! is_array( $v ) || array() === (array) ( $v['groups'] ?? array() ) ) {
+			return '<span class="description">（「試験合格」にすると記録します）</span>';
+		}
+		$out = esc_html( count( $v['groups'] ) . 'グループ・' . ( $v['at'] ? wp_date( 'Y-m-d H:i', (int) $v['at'] ) : '' ) );
+		try {
+			$now = StructureLock::current( $name );
+		} catch ( \Throwable $e ) {
+			$now = null;
+		}
+		if ( null !== $now && $now != $v['groups'] ) { // phpcs:ignore Universal.Operators.StrictComparisons -- 順番は問わない
+			$out .= '<br><strong style="color:#b32d2e">記録の後に構造が変わっています（確かめ直すまで書き込みを止めます）</strong>';
+		}
+		$out .= '<br><label><input type="checkbox" name="reverify[' . esc_attr( $name ) . ']" value="1"> いまの構造を確かめ直した</label>';
+		return $out;
+	}
 
 	private static function schema_tree( string $post_type ): void {
 		try {

@@ -1,5 +1,12 @@
 # 変更の記録
 
+## 0.4.0-dev（F4：ほかの投稿タイプ・確かめた構造・診断・手順書）
+
+- 「試験合格」「稼働」にしたときの ACF の構造を記録し、その後に構造が変わったら書き込みを止める（ACF-003）。管理画面で「確かめ直した」を記録できる。
+- 診断の各項目に「対処」。確かめた構造の項目を追加。
+- WP-CLI：`post-type <name> <status> [--reverify]`。自己テストに「管理者の REST を妨げない」「構造の記録が安定」を追加。
+- 手順書：PM 向け（docs/PM_GUIDE.md）・管理者向け（docs/ADMIN_GUIDE.md）。MCP の設定の雛形（bridge/mcp-config.example.json）。
+
 ## 0.3.0-dev（F3：写真の転送・制作方針の画面）
 
 - ツールを3つ足す：`prepare-upload`・`upload-chunk`・`finish-upload`（写真の分割転送。JPEG・PNG・WebP だけ）。

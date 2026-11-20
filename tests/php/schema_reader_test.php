@@ -96,14 +96,33 @@ function acf_get_fields( $key ) {
 	}
 	return array();
 }
+$GLOBALS['fx_opt'] = array();
 function get_option( $k, $d = false ) {
-	return $d;
+	return $GLOBALS['fx_opt'][ $k ] ?? $d;
+}
+function sanitize_key( $s ) {
+	return preg_replace( '/[^a-z0-9_\-]/', '', strtolower( (string) $s ) );
+}
+function get_term_by( $field, $value, $tax ) {
+	foreach ( $GLOBALS['fx_terms'] as $t ) {
+		if ( 'slug' === $field && $t->slug === $value && $t->taxonomy === $tax ) {
+			return $t;
+		}
+	}
+	return false;
+}
+function time_stub() {
+	return 1790000000;
+}
+function get_current_user_id() {
+	return 1;
 }
 
 require __DIR__ . '/../../ship-content-mcp/src/Core/DomainError.php';
 require __DIR__ . '/../../ship-content-mcp/src/Core/Settings.php';
 require __DIR__ . '/../../ship-content-mcp/src/Content/PostTypes.php';
 require __DIR__ . '/../../ship-content-mcp/src/ACF/SchemaReader.php';
+require __DIR__ . '/../../ship-content-mcp/src/Content/StructureLock.php';
 
 use ShipContentMcp\ACF\SchemaReader;
 use ShipContentMcp\Core\DomainError;
@@ -215,6 +234,48 @@ $check( 'ない分類の項目は拒否', 'INPUT-001' === $denied( fn() => ( new
 // 返さないもの：値・書き出しそのもの。
 $json = json_encode( $a['data'], JSON_UNESCAPED_UNICODE );
 $check( '返す形に、ACF の値やグループの内部情報（ID・hide_on_screen など）を含めない', ! str_contains( $json, '"ID"' ) && ! str_contains( $json, 'hide_on_screen' ) && ! str_contains( $json, '"value":"架空' ) );
+
+// ---- 確かめた構造（StructureLock） ----------------------------------------------
+use ShipContentMcp\Content\StructureLock;
+use ShipContentMcp\Core\Settings;
+$GLOBALS['fx_groups'] = $build( $fixture );
+$set_status = static function ( string $status, ?array $verified ) {
+	$row = array( 'enabled' => true, 'status' => $status );
+	if ( null !== $verified ) {
+		$row['verified'] = $verified;
+	}
+	$GLOBALS['fx_opt'][ Settings::OPTION ] = array( 'post_types' => array( 'works' => $row ) );
+	Settings::flush();
+};
+$cur = StructureLock::current( 'works' );
+$check( '構造の記録：分類で切り替わるグループも含む', array( 'group_EXAMPLE_FAKE_001', 'group_EXAMPLE_FAKE_OLD' ) === array_keys( $cur ), implode( ',', array_keys( $cur ) ) );
+$groups_now = ( new SchemaReader() )->read( 'works' )['data']['field_groups'];
+$lock_code  = static function ( callable $fn ): string {
+	try {
+		$fn();
+		return 'ok';
+	} catch ( DomainError $e ) {
+		return $e->error_code();
+	}
+};
+$set_status( 'testing', null );
+$check( '試験中は記録がなくても止めない', 'ok' === $lock_code( fn() => StructureLock::check( 'works', $groups_now ) ) );
+$set_status( 'tested', null );
+$check( '試験合格で記録がなければ止める（ACF-003）', 'ACF-003' === $lock_code( fn() => StructureLock::check( 'works', $groups_now ) ) );
+$set_status( 'tested', array( 'groups' => $cur, 'at' => 1, 'by' => 1 ) );
+$check( '試験合格・記録と同じなら通す', 'ok' === $lock_code( fn() => StructureLock::check( 'works', $groups_now ) ) );
+$GLOBALS['fx_groups'] = $build( $fx2 );
+$check( 'ラベル・選択肢の表示名だけの変更なら通す', 'ok' === $lock_code( fn() => StructureLock::check( 'works', ( new SchemaReader() )->read( 'works' )['data']['field_groups'] ) ) );
+$GLOBALS['fx_groups'] = $build( $fx4 );
+$changed = ( new SchemaReader() )->read( 'works' )['data']['field_groups'];
+$check( '選択肢が増えたら止める（ACF-003）', 'ACF-003' === $lock_code( fn() => StructureLock::check( 'works', $changed ) ) );
+$check( '違うグループを教える', array( 'group_EXAMPLE_FAKE_001' ) === StructureLock::differences( 'works', $changed ) );
+$set_status( 'active', array( 'groups' => StructureLock::current( 'works' ), 'at' => 2, 'by' => 1 ) );
+$check( '確かめ直せば通す（稼働）', 'ok' === $lock_code( fn() => StructureLock::check( 'works', $changed ) ) );
+$GLOBALS['fx_groups'] = $build( $fixture );
+$old_variant = ( new SchemaReader() )->read( 'works', 0, array( array( 'taxonomy' => 'sys_tag', 'term_ids' => array( 5 ) ) ) )['data']['field_groups'];
+$set_status( 'tested', array( 'groups' => $cur, 'at' => 1, 'by' => 1 ) );
+$check( '分類で切り替わるグループ（移設版）も、記録と同じなら通す', 'ok' === $lock_code( fn() => StructureLock::check( 'works', $old_variant ) ) );
 
 $fail = 0;
 foreach ( $results as [ $name, $ok, $note ] ) {

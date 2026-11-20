@@ -1,6 +1,6 @@
 <?php
 /**
- * WP-CLI：wp ship-content-mcp status|selftest|enable|disable|keys [list|add|revoke]|cleanup-tests [--yes]
+ * WP-CLI：wp ship-content-mcp status|selftest|enable|disable|post-type <name> <status>|keys [list|add|revoke]|cleanup-tests [--yes]
  *
  * selftest は読み取りが中心。書くのは、使い捨て番号の表への試験の行だけ（最後に消す）。ユーザー・投稿・鍵は作らない。
  *
@@ -13,6 +13,7 @@ use ShipContentMcp\ACF\SchemaReader;
 use ShipContentMcp\Admin\Diagnostics;
 use ShipContentMcp\Content\DraftService;
 use ShipContentMcp\Content\PostTypes;
+use ShipContentMcp\Content\StructureLock;
 use ShipContentMcp\Core\Consts;
 use ShipContentMcp\Core\Settings;
 use ShipContentMcp\MCP\Abilities;
@@ -51,7 +52,7 @@ final class Command {
 	public function status( array $args, array $assoc ): void {
 		unset( $args );
 		$rows = Diagnostics::collect( false );
-		\WP_CLI\Utils\format_items( $assoc['format'] ?? 'table', $rows, array( 'id', 'status', 'label', 'detail' ) );
+		\WP_CLI\Utils\format_items( $assoc['format'] ?? 'table', $rows, array( 'id', 'status', 'label', 'detail', 'remedy' ) );
 	}
 
 	/**
@@ -141,6 +142,52 @@ final class Command {
 		}
 		AuditLog::write( 'admin', 'ok', '', 'cleanup-tests deleted ' . $n . ' items', array( 'auth' => 'cli' ) );
 		\WP_CLI::success( $n . ' 件の試験の下書き・写真を消しました' );
+	}
+
+	/**
+	 * 投稿タイプの使い方を変える（管理画面の基本設定の「使える投稿タイプ」と同じ）。
+	 *
+	 * 「試験合格」「稼働」にしたとき（または --reverify）は、いまの入力欄の構造を「確かめた構造」として記録する。
+	 *
+	 * ## OPTIONS
+	 *
+	 * <name>
+	 * : 投稿タイプの名前
+	 *
+	 * <status>
+	 * : off（使わない）/ unverified / testing / tested / active
+	 *
+	 * [--reverify]
+	 * : いまの構造を確かめ直したとして記録し直す
+	 *
+	 * @subcommand post-type
+	 *
+	 * @param list<string>          $args
+	 * @param array<string,string>  $assoc
+	 */
+	public function post_type( array $args, array $assoc ): void {
+		[ $name, $status ] = array_pad( $args, 2, '' );
+		if ( ! isset( PostTypes::candidates()[ $name ] ) ) {
+			\WP_CLI::error( '使える候補の投稿タイプではありません：' . $name );
+		}
+		if ( 'off' !== $status && ! isset( Settings::STATUSES[ $status ] ) ) {
+			\WP_CLI::error( 'status は off / ' . implode( ' / ', array_keys( Settings::STATUSES ) ) . ' のどれかにしてください' );
+		}
+		$before = Settings::get();
+		$s      = $before;
+		$row    = $s['post_types'][ $name ] ?? array( 'status' => 'unverified' );
+		if ( 'off' === $status ) {
+			$row['enabled'] = false;
+		} else {
+			$row['enabled']  = true;
+			$row['status']   = $status;
+			$row['verified'] = StructureLock::next_verified( $name, $status, $before, ! empty( $assoc['reverify'] ) );
+		}
+		$s['post_types'][ $name ] = $row;
+		$after                    = Settings::save( $s );
+		AuditLog::write( 'admin', 'ok', '', 'post-type ' . $name . ' => ' . $status . ' via cli', array( 'auth' => 'cli' ) );
+		$v = $after['post_types'][ $name ]['verified']['groups'] ?? array();
+		\WP_CLI::success( $name . '：' . ( 'off' === $status ? '使わない' : Settings::STATUSES[ $status ] ) . ( array() !== $v ? '（確かめた構造 ' . count( $v ) . 'グループ）' : '' ) );
 	}
 
 	/**
@@ -380,6 +427,28 @@ final class Command {
 			if ( array() !== $recent ) {
 				$c = ( new SchemaReader() )->read( $pt, (int) $recent[0] );
 				$this->check( 'T45 既存の投稿でグループが出る：' . $pt . ' #' . $recent[0], count( $c['data']['field_groups'] ) > 0, count( $c['data']['field_groups'] ) . ' groups, ' . $c['data']['schema_fingerprint'] );
+			}
+		}
+
+		// --- ほかの操作を妨げない（管理者の REST はそのまま使える） ---
+		$admins = get_users(
+			array(
+				'role'   => 'administrator',
+				'number' => 1,
+				'fields' => 'ID',
+			)
+		);
+		if ( array() !== $admins ) {
+			$saved = get_current_user_id();
+			wp_set_current_user( (int) $admins[0] );
+			$r = rest_do_request( new \WP_REST_Request( 'GET', '/wp/v2/types/post' ) );
+			$this->check( 'T60 管理者の REST（/wp/v2/types）はそのまま使える', 200 === $r->get_status(), (string) $r->get_status() );
+			wp_set_current_user( $saved );
+		}
+		foreach ( $allowed as $pt ) {
+			if ( function_exists( 'acf_get_field_groups' ) ) {
+				$a = StructureLock::current( $pt );
+				$this->check( 'T61 構造の記録が安定：' . $pt, array() !== $a && StructureLock::current( $pt ) === $a, count( $a ) . ' groups' );
 			}
 		}
 
