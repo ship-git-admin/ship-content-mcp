@@ -3,7 +3,7 @@ Contributors: shipinc
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.4.0-dev
+Stable tag: 0.5.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -17,6 +17,9 @@ WordPress 側では AI を呼びません。公開・予約・削除・ACF の�
 読み取り（投稿タイプ・制作方針・入力欄の構造・記事）、下書きの検証・作成・修正、写真の分割転送のツールがあります。
 
 == Changelog ==
+
+= 0.5.0 =
+* 最初の公開版。GitHub のリリースからの更新（Plugin Update Checker）、配布用 ZIP の検査、CI。
 
 = 0.4.0-dev =
 * 確かめた構造（構造が変わったら書き込みを止める）、診断の対処、WP-CLI の post-type、手順書。

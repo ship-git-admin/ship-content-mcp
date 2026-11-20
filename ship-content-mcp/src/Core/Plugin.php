@@ -33,6 +33,9 @@ final class Plugin {
 		}
 		add_action( 'mcp_adapter_init', array( Server::class, 'register' ) );
 
+		// 更新の確認（GitHub の公開リリース）。plugins_loaded の中で作る（PUC の推奨）。
+		\ShipContentMcp\Release\Updater::register();
+
 		if ( is_admin() ) {
 			SettingsPage::hooks();
 		}

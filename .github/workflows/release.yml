@@ -1,0 +1,47 @@
+name: release
+
+# タグ（vX.Y.Z）を push すると、検査してから配布用 ZIP と中継プログラムを作り、「下書き（draft）」のリリースに添付する。
+# 公開（Publish release）は人が内容を確認してから GitHub の画面で行う。公開するまで各サイトには届かない。
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+jobs:
+  draft-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          extensions: gd, exif, sodium, fileinfo
+          tools: none
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: pip install jsonschema==4.23.0
+      - name: local tests
+        run: tools/test.sh
+      - name: secret scan (tree)
+        run: python3 tools/secret_scan.py
+      - name: secret scan (history)
+        run: python3 tools/secret_scan.py --history
+      - name: build and inspect ZIP
+        run: python3 tools/build_release.py --expect-tag "${GITHUB_REF_NAME}"
+      - name: create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          gh release create "${GITHUB_REF_NAME}" \
+            "dist/ship-content-mcp-${v}.zip" "dist/ship-content-mcp-${v}.manifest.json" "dist/ship-content-mcp-${v}.zip.sha256" "dist/ship-content-mcp-bridge.mjs" \
+            --draft --title "${GITHUB_REF_NAME}" \
+            --notes "配布用 ZIP: ship-content-mcp-${v}.zip（SHA-256 は .sha256 と manifest を参照）。PM 用の中継プログラム: ship-content-mcp-bridge.mjs（SHA-256 は manifest の bridge）。変更点は CHANGELOG.md。公開前に docs/RELEASE.md の確認項目を済ませること。"

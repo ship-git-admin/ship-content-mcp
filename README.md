@@ -8,7 +8,7 @@
 - 制作方針は、管理画面に自然な文章で書きます（サイト共通・投稿タイプ別）。
 - 公開・予約・削除・ACF の定義の変更・テーマやプラグインの変更は、できません。
 
-> いまは **F4（ほかの投稿タイプ・確かめた構造・診断・手順書）** までです。
+> 版 0.5.0。PM の試運用の前の段階です。
 
 ## 必要なもの
 
@@ -106,6 +106,12 @@ WordPress 上では `wp ship-content-mcp selftest`（読み取り中心）と `w
 
 管理用の WP-CLI：`wp ship-content-mcp enable|disable`、`wp ship-content-mcp keys list|add|revoke`（`add` は `--for-user=<ID> --label=<端末名> --public-key=<公開鍵>`）、`wp ship-content-mcp cleanup-tests [--yes]`（試験の下書きの片付け）。
 
+## 配布・更新
+
+- 配布は GitHub のリリースに添付した `ship-content-mcp-X.Y.Z.zip`（管理画面の「プラグイン > 新規追加 > アップロード」でも入れられる）。入れた後は、WordPress の「更新」画面に新しい版が出る（同梱の Plugin Update Checker）。
+- PM 用の中継プログラム `ship-content-mcp-bridge.mjs` も、同じリリースに添付する。
+- リリース・巻き戻しの手順は [docs/RELEASE.md](docs/RELEASE.md)、脆弱性の報告は [SECURITY.md](SECURITY.md)。
+
 ## ライセンス
 
-GPL-2.0-or-later
+GPL-2.0-or-later（同梱の Plugin Update Checker などは MIT。`ship-content-mcp/THIRD_PARTY_NOTICES.txt`）
