@@ -67,10 +67,7 @@ final class UploadService {
 		$existing = self::find_existing( $sha );
 		if ( $existing > 0 ) {
 			return array(
-				'data'     => array(
-					'already_uploaded' => true,
-					'attachment_id'    => $existing,
-				),
+				'data'     => array( 'already_uploaded' => true ) + self::attachment_info( $existing ),
 				'warnings' => array( '同じ写真がすでに登録されているので、その添付 ID を返しました（転送は不要です）。' ),
 			);
 		}
@@ -262,20 +259,11 @@ final class UploadService {
 		if ( $test ) {
 			update_post_meta( $id, DraftService::META_TEST, '1' );
 		}
-		$meta = wp_get_attachment_metadata( $id );
-		$data = array(
-			'attachment_id'     => $id,
-			'mime_type'         => (string) get_post_mime_type( $id ),
-			'width'             => (int) ( $meta['width'] ?? $check['width'] ),
-			'height'            => (int) ( $meta['height'] ?? $check['height'] ),
-			'filesize'          => (int) filesize( (string) get_attached_file( $id ) ),
+		$data = self::attachment_info( $id ) + array(
 			'metadata_removed'  => $strip['removed'],
 			'gps_removed'       => $strip['gps_found'] && $strip['removed'],
 			'attached_to'       => $parent,
-			'url'               => (string) wp_get_attachment_url( $id ),
-			'url_large'         => (string) ( wp_get_attachment_image_src( $id, 'large' )[0] ?? '' ),
 			'test_marked'       => $test,
-			'admin_edit_url'    => admin_url( 'post.php?post=' . $id . '&action=edit' ),
 			'idempotent_replay' => false,
 		);
 		if ( $strip['gps_found'] && $strip['removed'] ) {
@@ -287,6 +275,27 @@ final class UploadService {
 			'data'     => $data,
 			'warnings' => $warnings,
 			'log'      => array( 'post_id' => $id ),
+		);
+	}
+
+	/**
+	 * 登録した写真の情報（ID・形式・大きさ・URL）。URL は公開されている（下書きでも見られる）。
+	 *
+	 * @return array<string,mixed>
+	 */
+	public static function attachment_info( int $id ): array {
+		$meta  = wp_get_attachment_metadata( $id );
+		$file  = (string) get_attached_file( $id );
+		$large = wp_get_attachment_image_src( $id, 'large' );
+		return array(
+			'attachment_id'  => $id,
+			'mime_type'      => (string) get_post_mime_type( $id ),
+			'width'          => (int) ( $meta['width'] ?? 0 ),
+			'height'         => (int) ( $meta['height'] ?? 0 ),
+			'filesize'       => is_file( $file ) ? (int) filesize( $file ) : 0,
+			'url'            => (string) wp_get_attachment_url( $id ),
+			'url_large'      => is_array( $large ) ? (string) $large[0] : '',
+			'admin_edit_url' => admin_url( 'post.php?post=' . $id . '&action=edit' ),
 		);
 	}
 
