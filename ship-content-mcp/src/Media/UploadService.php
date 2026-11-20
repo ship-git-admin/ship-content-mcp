@@ -381,6 +381,27 @@ final class UploadService {
 	}
 
 	/**
+	 * 「試験中」の投稿タイプの、仕上げていない転送を消す（cleanup-tests から呼ぶ。試験のデータなので）。
+	 *
+	 * @param list<string> $post_types
+	 */
+	public static function purge_open_for( array $post_types ): int {
+		global $wpdb;
+		if ( array() === $post_types ) {
+			return 0;
+		}
+		$u     = Installer::table( 'uploads' );
+		$c     = Installer::table( 'chunks' );
+		$holes = implode( ',', array_fill( 0, count( $post_types ), '%s' ) );
+		$ids   = (array) $wpdb->get_col( $wpdb->prepare( "SELECT session_id FROM {$u} WHERE status = 'open' AND post_type IN ({$holes})", $post_types ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQLPlaceholders
+		foreach ( $ids as $id ) {
+			$wpdb->delete( $c, array( 'session_id' => $id ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			$wpdb->delete( $u, array( 'session_id' => $id ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		}
+		return count( $ids );
+	}
+
+	/**
 	 * 期限切れの転送と、古い仕上げ済みの記録を消す（リクエストのついでに。WP-Cron に頼らない）。
 	 */
 	public static function maybe_purge( bool $force = false ): int {

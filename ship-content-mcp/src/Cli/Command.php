@@ -114,9 +114,10 @@ final class Command {
 			);
 		}
 		if ( ! empty( $assoc['yes'] ) ) {
-			$purged = UploadService::maybe_purge( true );
+			$testing = array_values( array_filter( PostTypes::allowed(), array( PostTypes::class, 'testing' ) ) );
+			$purged  = UploadService::maybe_purge( true ) + UploadService::purge_open_for( $testing );
 			if ( $purged > 0 ) {
-				\WP_CLI::log( '期限切れ・古い写真の転送の記録を ' . $purged . ' 件消しました' );
+				\WP_CLI::log( '写真の転送の記録（期限切れ・古い仕上げ済み・試験中の仕上げていないもの）を ' . $purged . ' 件消しました' );
 			}
 		}
 		if ( array() === $rows ) {
