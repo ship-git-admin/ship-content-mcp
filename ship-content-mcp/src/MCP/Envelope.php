@@ -42,14 +42,18 @@ final class Envelope {
 	 * @return array<string,mixed>
 	 */
 	public static function error( DomainError $e ): array {
+		$error = array(
+			'code'         => $e->error_code(),
+			'message'      => $e->getMessage(),
+			'admin_detail' => $e->admin_detail(),
+			'retryable'    => $e->retryable(),
+		);
+		if ( array() !== $e->details() ) {
+			$error['details'] = array_slice( $e->details(), 0, 100 );
+		}
 		return array(
 			'ok'         => false,
-			'error'      => array(
-				'code'         => $e->error_code(),
-				'message'      => $e->getMessage(),
-				'admin_detail' => $e->admin_detail(),
-				'retryable'    => $e->retryable(),
-			),
+			'error'      => $error,
 			'request_id' => RequestContext::request_id(),
 		);
 	}

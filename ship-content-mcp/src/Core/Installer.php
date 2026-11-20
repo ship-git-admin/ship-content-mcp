@@ -2,7 +2,7 @@
 /**
  * 有効化・版上げ（何度実行しても同じ結果になるようにする）。
  *
- * - 表：端末の鍵・使い捨て番号（リプレイ防止）・操作の記録
+ * - 表：端末の鍵・使い捨て番号（リプレイ防止）・操作の記録・二重送信の防止（idempotency）
  * - ロール：Content MCP Operator（read と専用の権限だけ）
  * - サイトの鍵（応答の署名用）
  * - 設定・制作方針は、すでにあれば変えない（更新で消さない）
@@ -50,6 +50,7 @@ final class Installer {
 		$keys    = self::table( 'keys' );
 		$nonces  = self::table( 'nonces' );
 		$log     = self::table( 'log' );
+		$idem    = self::table( 'idem' );
 
 		dbDelta(
 			"CREATE TABLE {$keys} (
@@ -97,6 +98,24 @@ final class Installer {
   PRIMARY KEY  (id),
   KEY created_at (created_at),
   KEY user_id (user_id)
+) {$charset};"
+		);
+		self::create_idem_table( $idem, $charset );
+	}
+
+	private static function create_idem_table( string $idem, string $charset ): void {
+		dbDelta(
+			"CREATE TABLE {$idem} (
+  user_id bigint(20) unsigned NOT NULL,
+  idem_hash char(64) NOT NULL,
+  op varchar(20) NOT NULL,
+  payload_hash char(64) NOT NULL,
+  status varchar(10) NOT NULL,
+  post_id bigint(20) unsigned NOT NULL DEFAULT 0,
+  result longtext NULL,
+  created_at int(10) unsigned NOT NULL,
+  PRIMARY KEY  (user_id,idem_hash),
+  KEY created_at (created_at)
 ) {$charset};"
 		);
 	}

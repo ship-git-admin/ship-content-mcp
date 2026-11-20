@@ -42,7 +42,7 @@ final class Server {
 				Consts::NS,
 				Consts::ROUTE,
 				'Ship Content MCP',
-				'許可された投稿タイプの下書きを作るためのツール（読み取り・検証・下書きの保存のみ。公開・削除はできません）。',
+				'許可された投稿タイプの下書きを作る・直すためのツール（読み取り・検証・下書きの保存のみ。公開・予約・削除はできません）。',
 				SHIP_CONTENT_MCP_VERSION,
 				array( $transport ),
 				class_exists( $errors ) ? $errors : null,

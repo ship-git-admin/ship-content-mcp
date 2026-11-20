@@ -84,6 +84,25 @@ final class PostTypes {
 		}
 	}
 
+	/**
+	 * @throws DomainError 書き込みが許可されていないとき
+	 */
+	public static function assert_writable( string $post_type ): void {
+		self::assert_allowed( $post_type );
+		if ( ! self::writable( $post_type ) ) {
+			throw new DomainError( 'WRITE-001', 'post_type status is ' . self::status( $post_type ) );
+		}
+	}
+
+	public static function writable( string $post_type ): bool {
+		return in_array( self::status( $post_type ), Settings::WRITABLE_STATUSES, true );
+	}
+
+	/** 試験中の投稿タイプか（作った下書きに試験の印を付ける）。 */
+	public static function testing( string $post_type ): bool {
+		return 'testing' === self::status( $post_type );
+	}
+
 	public static function status( string $post_type ): string {
 		return (string) ( Settings::get()['post_types'][ $post_type ]['status'] ?? 'unverified' );
 	}

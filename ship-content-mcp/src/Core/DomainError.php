@@ -28,6 +28,10 @@ final class DomainError extends \RuntimeException {
 		'AUTH-001'     => 'この操作は許可されていません',
 		'INPUT-001'    => '指定の内容に問題があります',
 		'POST-001'     => '指定の投稿が見つからないか、読み取りが許可されていません',
+		'EDIT-001'     => '既存の内容を消す変更が含まれています。消してよい場合は allow_removals を true にしてください',
+		'WRITE-001'    => 'この投稿タイプは、まだ書き込みが許可されていません（サイト管理者が状態を「試験中」以上にする必要があります）',
+		'IDEM-001'     => '同じ idempotency_key で、違う内容が送られました。新しい idempotency_key を使ってください',
+		'IDEM-002'     => '同じ依頼を処理しています。少し待ってから、同じ内容でもう一度送ってください',
 		'SYS-001'      => 'サーバーで問題が起きました。時間をおいて、もう一度お試しください',
 	);
 
@@ -35,10 +39,17 @@ final class DomainError extends \RuntimeException {
 	private string $admin_detail;
 	private bool $retryable;
 
-	public function __construct( string $code, string $admin_detail = '', bool $retryable = false, string $message = '' ) {
+	/** @var list<array<string,mixed>> どの欄の何が悪いか（PM・AI に見せてよい内容だけ） */
+	private array $details;
+
+	/**
+	 * @param list<array<string,mixed>> $details
+	 */
+	public function __construct( string $code, string $admin_detail = '', bool $retryable = false, string $message = '', array $details = array() ) {
 		$this->error_code   = $code;
 		$this->admin_detail = $admin_detail;
 		$this->retryable    = $retryable;
+		$this->details      = $details;
 		parent::__construct( '' !== $message ? $message : ( self::MESSAGES[ $code ] ?? self::MESSAGES['SYS-001'] ) );
 	}
 
@@ -52,5 +63,12 @@ final class DomainError extends \RuntimeException {
 
 	public function retryable(): bool {
 		return $this->retryable;
+	}
+
+	/**
+	 * @return list<array<string,mixed>>
+	 */
+	public function details(): array {
+		return $this->details;
 	}
 }

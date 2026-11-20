@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/schemas/validate_draft.schema.json",
+  "title": "Validate draft (dry run)",
+  "description": "draft は operation が create なら draft_create、update なら draft_patch の形。サーバーは書かずに検証だけ行う。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "operation",
+    "draft"
+  ],
+  "properties": {
+    "operation": {
+      "enum": [
+        "create",
+        "update"
+      ]
+    },
+    "draft": {
+      "type": "object"
+    }
+  }
+}

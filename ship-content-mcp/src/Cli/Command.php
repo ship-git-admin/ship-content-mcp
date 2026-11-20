@@ -1,6 +1,6 @@
 <?php
 /**
- * WP-CLI：wp ship-content-mcp status|selftest|enable|disable|keys [list|add|revoke]
+ * WP-CLI：wp ship-content-mcp status|selftest|enable|disable|keys [list|add|revoke]|cleanup-tests [--yes]
  *
  * selftest は読み取りが中心。書くのは、使い捨て番号の表への試験の行だけ（最後に消す）。ユーザー・投稿・鍵は作らない。
  *
@@ -11,6 +11,7 @@ namespace ShipContentMcp\Cli;
 
 use ShipContentMcp\ACF\SchemaReader;
 use ShipContentMcp\Admin\Diagnostics;
+use ShipContentMcp\Content\DraftService;
 use ShipContentMcp\Content\PostTypes;
 use ShipContentMcp\Core\Consts;
 use ShipContentMcp\Core\Settings;
@@ -50,6 +51,60 @@ final class Command {
 		unset( $args );
 		$rows = Diagnostics::collect( false );
 		\WP_CLI\Utils\format_items( $assoc['format'] ?? 'table', $rows, array( 'id', 'status', 'label', 'detail' ) );
+	}
+
+	/**
+	 * 試験の印の付いた下書きを消す（「試験中」の投稿タイプで MCP が作った下書きだけ。公開済みは消さない）。
+	 *
+	 * ## OPTIONS
+	 *
+	 * [--yes]
+	 * : 付けたときだけ消す（付けなければ一覧を表示するだけ）
+	 *
+	 * @param list<string>          $args
+	 * @param array<string,string>  $assoc
+	 */
+	public function cleanup_tests( array $args, array $assoc ): void {
+		unset( $args );
+		$ids  = get_posts(
+			array(
+				'post_type'        => array_values( array_diff( get_post_types(), array( 'attachment', 'revision' ) ) ),
+				'post_status'      => 'draft',
+				'meta_key'         => DraftService::META_TEST, // phpcs:ignore WordPress.DB.SlowDBQuery
+				'meta_value'       => '1', // phpcs:ignore WordPress.DB.SlowDBQuery
+				'posts_per_page'   => -1,
+				'fields'           => 'ids',
+				'suppress_filters' => true,
+			)
+		);
+		$rows = array();
+		foreach ( $ids as $id ) {
+			if ( '' === (string) get_post_meta( $id, DraftService::META_CREATED, true ) ) {
+				continue;
+			}
+			$rows[] = array(
+				'ID'        => $id,
+				'post_type' => get_post_type( $id ),
+				'title'     => get_the_title( $id ),
+			);
+		}
+		if ( array() === $rows ) {
+			\WP_CLI::success( '試験の下書きはありません' );
+			return;
+		}
+		\WP_CLI\Utils\format_items( 'table', $rows, array( 'ID', 'post_type', 'title' ) );
+		if ( empty( $assoc['yes'] ) ) {
+			\WP_CLI::log( count( $rows ) . ' 件あります。--yes を付けると消します。' );
+			return;
+		}
+		$n = 0;
+		foreach ( $rows as $r ) {
+			if ( 'draft' === get_post_status( $r['ID'] ) && wp_delete_post( (int) $r['ID'], true ) ) {
+				++$n;
+			}
+		}
+		AuditLog::write( 'admin', 'ok', '', 'cleanup-tests deleted ' . $n . ' drafts', array( 'auth' => 'cli' ) );
+		\WP_CLI::success( $n . ' 件の試験の下書きを消しました' );
 	}
 
 	/**

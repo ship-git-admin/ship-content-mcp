@@ -8,7 +8,7 @@
 - 制作方針は、管理画面に自然な文章で書きます（サイト共通・投稿タイプ別）。
 - 公開・予約・削除・ACF の定義の変更・テーマやプラグインの変更は、できません。
 
-> いまは **F1（読み取りのみ）** です。下書きの作成・修正は次の段階（F2）で入ります。
+> いまは **F2（下書きの作成・修正）** です。写真の転送は次の段階（F3）で入ります。
 
 ## 必要なもの
 
@@ -62,13 +62,22 @@ SHIP_MCP_URL=... SHIP_MCP_KEY_ID=... SHIP_MCP_KEY_FILE=... SHIP_MCP_SERVER_KEY=.
 
 HTTPS のサイトでは、WordPress の Application Password でも接続できます（HTTP では使えません）。
 
-## ツール（F1）
+## ツール
 
 | ツール | すること |
 |---|---|
-| `ship-content-list-post-types` | 使える投稿タイプ・分類・状態 |
+| `ship-content-list-post-types` | 使える投稿タイプ・分類・状態・書き込めるか |
 | `ship-content-get-creation-policy` | 制作方針（サイト共通・投稿タイプ別） |
 | `ship-content-get-acf-schema` | 入力欄（ACF）の構造（field key・型・選択肢・レイアウト・入れ子・条件表示）と `schema_fingerprint` |
+| `ship-content-search-posts` | 記事を探す（公開済み・下書き） |
+| `ship-content-get-post` | 記事を読む（ACF の値は保存されたままの形。`if_match` 付き） |
+| `ship-content-validate-draft` | 保存の前に確かめる（書かない。誤り・消える内容・差分） |
+| `ship-content-create-draft` | 下書きを作る（状態は必ず下書き） |
+| `ship-content-update-draft` | 下書きを直す（指定した部分だけ。消す変更は `allow_removals` が要る） |
+
+ACF の値は、上の階層も入れ子も field key で指定します。flexible content の行は `acf_fc_layout` にレイアウトの name を入れます。
+
+投稿タイプの状態：「未検証」は読み取りだけ、「試験中」は書き込みの試験（作った下書きに試験の印）、「試験合格」「稼働」で書き込めます。
 
 ## 安全の決まり
 
@@ -86,7 +95,7 @@ tools/test.sh
 
 WordPress 上では `wp ship-content-mcp selftest`（読み取り中心）と `wp ship-content-mcp status`（診断）。
 
-管理用の WP-CLI：`wp ship-content-mcp enable|disable`、`wp ship-content-mcp keys list|add|revoke`（`add` は `--for-user=<ID> --label=<端末名> --public-key=<公開鍵>`）。
+管理用の WP-CLI：`wp ship-content-mcp enable|disable`、`wp ship-content-mcp keys list|add|revoke`（`add` は `--for-user=<ID> --label=<端末名> --public-key=<公開鍵>`）、`wp ship-content-mcp cleanup-tests [--yes]`（試験の下書きの片付け）。
 
 ## ライセンス
 

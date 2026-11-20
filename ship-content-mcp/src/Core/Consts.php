@@ -32,7 +32,7 @@ final class Consts {
 	public const ROLE_LABEL = 'Content MCP Operator';
 
 	/** DB の版（表の作り直しが要るときに上げる）。 */
-	public const DB_VERSION = 1;
+	public const DB_VERSION = 2;
 
 	public const OPTION_DB_VERSION = 'ship_content_mcp_db_version';
 }

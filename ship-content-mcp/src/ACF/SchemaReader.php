@@ -41,10 +41,11 @@ final class SchemaReader {
 
 	/**
 	 * @param list<array{taxonomy:string,term_ids:list<int>}> $terms 新しい下書きのときの予定の分類
+	 * @param array<string,list<int>>|null                    $post_terms_override 既存の投稿で「分類を変えた後」を判定するとき（分類 => 項目 ID）
 	 * @return array{data:array<string,mixed>,warnings:list<string>}
 	 * @throws DomainError
 	 */
-	public function read( string $post_type, int $post_id = 0, array $terms = array() ): array {
+	public function read( string $post_type, int $post_id = 0, array $terms = array(), ?array $post_terms_override = null ): array {
 		if ( ! function_exists( 'acf_get_field_groups' ) || ! function_exists( 'acf_get_fields' ) ) {
 			throw new DomainError( 'ACF-000', 'acf not active' );
 		}
@@ -63,6 +64,10 @@ final class SchemaReader {
 				'post_id' => $post_id,
 				'status'  => $post->post_status,
 			);
+			if ( null !== $post_terms_override ) {
+				$screen['post_terms'] = $post_terms_override;
+				$context['mode']      = 'post_with_new_terms';
+			}
 		} else {
 			$by_tax = $this->terms_by_taxonomy( $post_type, $terms );
 			$screen = array(

@@ -15,6 +15,9 @@ echo "== PHP：署名の形・IP"
 echo "== PHP：ACF の構造を読む（架空の ACF）"
 "$PHP" tests/php/schema_reader_test.php tests/fixtures/acf_schema.synthetic.json | tail -1
 
+echo "== PHP：ACF の値の検証・差分（架空の入力欄）"
+"$PHP" tests/php/validator_test.php | tail -1
+
 echo "== 制作方針の出力（contracts/policy_output.schema.json）"
 "$PHP" tests/php/policy_output_test.php | python3 -I -c '
 import json, sys

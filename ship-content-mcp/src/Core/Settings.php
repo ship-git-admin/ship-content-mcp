@@ -4,7 +4,7 @@
  *
  * - enabled：MCP を動かすか。初期は停止（入れただけでは何も公開しない）。
  * - disable_default_server：公式 Adapter の既定サーバーを止める（初期は止める）。
- * - post_types：使ってよい投稿タイプと状態（unverified=未検証 / tested=試験合格 / active=稼働）。初期は works だけ・未検証。
+ * - post_types：使ってよい投稿タイプと状態（unverified=未検証 / testing=試験中 / tested=試験合格 / active=稼働）。初期は works だけ・未検証。
  * - reject_privileged：一般の編集権限などを持つユーザーを MCP で使わせない（初期は拒否）。
  * - ip_allowlist：接続元の IP/CIDR（空なら制限しない）。REMOTE_ADDR だけを見る。
  * - auth_signature / auth_app_password：使ってよい認証の方法。
@@ -20,11 +20,15 @@ final class Settings {
 
 	public const OPTION = 'ship_content_mcp_settings';
 
+	/** 投稿タイプの状態。書き込めるのは testing・tested・active。testing で作った下書きには試験の印が付く。 */
 	public const STATUSES = array(
-		'unverified' => '未検証',
+		'unverified' => '未検証（読み取りのみ）',
+		'testing'    => '試験中（書き込みの試験。作った下書きに試験の印）',
 		'tested'     => '試験合格',
 		'active'     => '稼働',
 	);
+
+	public const WRITABLE_STATUSES = array( 'testing', 'tested', 'active' );
 
 	private static ?array $cache = null;
 

@@ -136,6 +136,16 @@
           }
         ]
       }
+    },
+    "schema_fingerprint": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 256,
+      "description": "任意。get-post / get-acf-schema の schema_fingerprint。違えば保存しない（ACF-001）。"
+    },
+    "allow_removals": {
+      "type": "boolean",
+      "description": "任意。既存の値を空にする・行を減らす・分類を外す変更を許すとき true。なければ止める（EDIT-001）。"
     }
   }
 }
