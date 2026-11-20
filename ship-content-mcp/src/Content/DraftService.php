@@ -715,7 +715,12 @@ final class DraftService {
 			$errors[] = array( 'path' => $path, 'code' => 'type', 'message' => '本文を文字列（1MB まで）で入れてください' );
 			return null;
 		}
-		return str_replace( array( "\r\n", "\r" ), "\n", $v );
+		// script・style は中身ごと消す（WordPress の kses はタグだけを消し、中の文字を本文に残すため）。残りは WordPress の kses が無害化する。
+		$clean = (string) preg_replace( '#<(script|style)\b[^>]*>.*?</\1\s*>#is', '', $v );
+		if ( $clean !== $v ) {
+			$this->warnings[] = '本文から script・style を取り除きました。';
+		}
+		return str_replace( array( "\r\n", "\r" ), "\n", $clean );
 	}
 
 	/**
