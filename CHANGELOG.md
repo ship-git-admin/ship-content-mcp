@@ -8,4 +8,4 @@
 - 権限：専用の権限 `ship_content_mcp_access` とロール「Content MCP Operator」。権限の強いユーザーは拒否。
 - 管理画面：基本設定・制作方針（履歴つき、入力欄の参考表示）・端末の鍵・診断・記録。
 - 中継プログラム（`bridge/`）：鍵の作成・接続の確認・中継。
-- WP-CLI：`wp ship-content-mcp status|selftest|keys`。
+- WP-CLI：`wp ship-content-mcp status|selftest|enable|disable|keys [list|add|revoke]`。

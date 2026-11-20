@@ -1,6 +1,6 @@
 <?php
 /**
- * WP-CLI：wp ship-content-mcp status|selftest|keys
+ * WP-CLI：wp ship-content-mcp status|selftest|enable|disable|keys [list|add|revoke]
  *
  * selftest は読み取りが中心。書くのは、使い捨て番号の表への試験の行だけ（最後に消す）。ユーザー・投稿・鍵は作らない。
  *
@@ -53,13 +53,90 @@ final class Command {
 	}
 
 	/**
-	 * 端末の鍵の一覧（公開鍵は指紋だけ）。
+	 * MCP を受け付ける（管理画面の「MCP を受け付ける」と同じ）。
+	 *
+	 * @param list<string>          $args
+	 * @param array<string,string>  $assoc
+	 */
+	public function enable( array $args, array $assoc ): void {
+		unset( $args, $assoc );
+		$this->set_enabled( true );
+	}
+
+	/**
+	 * MCP を止める。
+	 *
+	 * @param list<string>          $args
+	 * @param array<string,string>  $assoc
+	 */
+	public function disable( array $args, array $assoc ): void {
+		unset( $args, $assoc );
+		$this->set_enabled( false );
+	}
+
+	private function set_enabled( bool $on ): void {
+		$s            = Settings::get();
+		$s['enabled'] = $on;
+		Settings::save( $s );
+		AuditLog::write( 'admin', 'ok', '', ( $on ? 'enabled' : 'disabled' ) . ' via cli', array( 'auth' => 'cli' ) );
+		\WP_CLI::success( $on ? 'MCP を受け付けます' : 'MCP を止めました' );
+	}
+
+	/**
+	 * 端末の鍵の一覧・登録・停止（公開鍵は指紋だけを表示。秘密鍵は受け付けない）。
+	 *
+	 * ## OPTIONS
+	 *
+	 * [<action>]
+	 * : list / add / revoke
+	 * ---
+	 * default: list
+	 * ---
+	 *
+	 * [--for-user=<id>]
+	 * : add のとき：鍵を使うユーザーの ID（Content MCP Operator のユーザー）
+	 *
+	 * [--label=<label>]
+	 * : add のとき：端末の名前
+	 *
+	 * [--public-key=<base64>]
+	 * : add のとき：中継プログラムの keygen が表示した公開鍵
+	 *
+	 * [--key-id=<id>]
+	 * : revoke のとき：止める鍵の ID
 	 *
 	 * @param list<string>          $args
 	 * @param array<string,string>  $assoc
 	 */
 	public function keys( array $args, array $assoc ): void {
-		unset( $args, $assoc );
+		$action = $args[0] ?? 'list';
+		if ( 'add' === $action ) {
+			$user_id = (int) ( $assoc['for-user'] ?? 0 );
+			$why     = AccessGate::user_problem( $user_id );
+			if ( '' !== $why ) {
+				\WP_CLI::error( 'このユーザーは MCP を使えません：' . $why );
+			}
+			try {
+				$key_id = DeviceKeys::add( $user_id, (string) ( $assoc['label'] ?? '' ), (string) ( $assoc['public-key'] ?? '' ), get_current_user_id() );
+			} catch ( \InvalidArgumentException $e ) {
+				\WP_CLI::error( $e->getMessage() );
+			}
+			AuditLog::write( 'admin', 'ok', '', 'key added via cli for user #' . $user_id, array( 'key_id' => $key_id, 'auth' => 'cli' ) );
+			\WP_CLI::log( 'SHIP_MCP_KEY_ID=' . $key_id );
+			\WP_CLI::log( 'SHIP_MCP_SERVER_KEY=' . SiteKey::public_b64() );
+			\WP_CLI::success( '登録しました' );
+			return;
+		}
+		if ( 'revoke' === $action ) {
+			$key_id = (string) ( $assoc['key-id'] ?? '' );
+			$ok     = DeviceKeys::revoke( $key_id, get_current_user_id() );
+			AuditLog::write( 'admin', $ok ? 'ok' : 'error', '', 'key revoked via cli', array( 'key_id' => $key_id, 'auth' => 'cli' ) );
+			$ok ? \WP_CLI::success( '止めました：' . $key_id ) : \WP_CLI::error( '止められませんでした（ない鍵か、すでに止めた鍵）' );
+			return;
+		}
+		if ( 'list' !== $action ) {
+			\WP_CLI::error( 'list / add / revoke のどれかを指定してください' );
+		}
 		$rows = array();
 		foreach ( DeviceKeys::all() as $r ) {
 			$raw    = SignatureCodec::decode_public_key( (string) $r['public_key'] );

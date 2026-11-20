@@ -86,6 +86,8 @@ tools/test.sh
 
 WordPress 上では `wp ship-content-mcp selftest`（読み取り中心）と `wp ship-content-mcp status`（診断）。
 
+管理用の WP-CLI：`wp ship-content-mcp enable|disable`、`wp ship-content-mcp keys list|add|revoke`（`add` は `--for-user=<ID> --label=<端末名> --public-key=<公開鍵>`）。
+
 ## ライセンス
 
 GPL-2.0-or-later
