@@ -8,7 +8,7 @@
 - 制作方針は、管理画面に自然な文章で書きます（サイト共通・投稿タイプ別）。
 - 公開・予約・削除・ACF の定義の変更・テーマやプラグインの変更は、できません。
 
-> いまは **F2（下書きの作成・修正）** です。写真の転送は次の段階（F3）で入ります。
+> いまは **F3（写真の転送）** までです。
 
 ## 必要なもの
 
@@ -74,6 +74,10 @@ HTTPS のサイトでは、WordPress の Application Password でも接続でき
 | `ship-content-validate-draft` | 保存の前に確かめる（書かない。誤り・消える内容・差分） |
 | `ship-content-create-draft` | 下書きを作る（状態は必ず下書き） |
 | `ship-content-update-draft` | 下書きを直す（指定した部分だけ。消す変更は `allow_removals` が要る） |
+
+| `ship-content-prepare-upload`・`ship-content-upload-chunk`・`ship-content-finish-upload` | 写真の分割転送（JPEG・PNG・WebP。位置情報などは消してから登録） |
+
+中継プログラムは、ローカルのツール `ship-content-upload-local-image` も AI に見せます。AI は写真のファイルのパスを渡すだけで、読み込み・分割・送信は中継プログラムが行います。送れるのは `SHIP_MCP_UPLOAD_DIRS`（既定はホームフォルダ）の中の、隠しフォルダでない画像だけです。**メディアの写真は、記事が下書きのままでも URL を知っていれば見られます。** 公開してよい写真だけを登録してください。
 
 ACF の値は、上の階層も入れ子も field key で指定します。flexible content の行は `acf_fc_layout` にレイアウトの name を入れます。
 

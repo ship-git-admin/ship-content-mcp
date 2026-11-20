@@ -18,16 +18,22 @@
 //   SHIP_MCP_SERVER_KEY   サイトの公開鍵（管理画面に表示）
 //   SHIP_MCP_BASIC_AUTH   サーバーの Basic 認証（ある場合だけ。ID:パスワード）
 //   SHIP_MCP_TIMEOUT_MS   1回の通信の待ち時間（既定 60000）
+//   SHIP_MCP_UPLOAD_DIRS  写真を送ってよいフォルダ（区切りは : 。既定はホームフォルダ。隠しフォルダの中は不可）
+//
+// 写真：AI エージェントには、ローカルのツール ship-content-upload-local-image を見せる。AI はファイルのパスを渡すだけで、
+// 読み込み・分割・送信（prepare-upload → upload-chunk × N → finish-upload）はこのプログラムが行う。
 //
 // 署名の決まりは docs/AUTH_SIGNATURE.md（WordPress 側の SignatureCodec と同じ）。
 
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, randomBytes, sign, verify } from 'node:crypto';
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, statSync, writeSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { delimiter, dirname, isAbsolute, relative, resolve, basename, extname } from 'node:path';
+import { homedir } from 'node:os';
+import { realpathSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
-export const VERSION = '0.1.0-dev';
+export const VERSION = '0.3.0-dev';
 export const REQ_PREFIX = 'ship-content-mcp-req-v1';
 export const RES_PREFIX = 'ship-content-mcp-res-v1';
 const SPKI_ED25519_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
@@ -108,8 +114,67 @@ export function loadConfig(env = process.env) {
   if (url.protocol === 'http:') {
     log('注意：HTTP で接続します。パスワードは送りませんが、中身（文章・写真）は暗号化されません。公開予定の内容だけを扱ってください。');
   }
-  return { url, keyId: env.SHIP_MCP_KEY_ID, privateKey, serverKey, basic, timeoutMs };
+  const uploadRoots = (env.SHIP_MCP_UPLOAD_DIRS ? env.SHIP_MCP_UPLOAD_DIRS.split(delimiter) : [homedir()])
+    .filter(Boolean)
+    .map((d) => { try { return realpathSync(resolve(expandHome(d))); } catch { return null; } })
+    .filter(Boolean);
+  return { url, keyId: env.SHIP_MCP_KEY_ID, privateKey, serverKey, basic, timeoutMs, uploadRoots };
 }
+
+// ---- 写真（ローカルのファイル） ---------------------------------------------------
+
+export const LOCAL_UPLOAD_TOOL = 'ship-content-upload-local-image';
+const LOCAL_MAX_BYTES = 100 * 1024 * 1024;
+const EXT_MIME = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+
+function expandHome(p) {
+  return p === '~' || p.startsWith('~/') ? homedir() + p.slice(1) : p;
+}
+
+export function sniffImage(buf) {
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+  if (buf.length >= 8 && buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png';
+  if (buf.length >= 12 && buf.toString('latin1', 0, 4) === 'RIFF' && buf.toString('latin1', 8, 12) === 'WEBP') return 'image/webp';
+  return null;
+}
+
+// 送ってよいファイルか（許されたフォルダの中・隠しフォルダでない・画像）。読み込んだ中身と MIME を返す。
+export function checkLocalImage(path, roots) {
+  if (typeof path !== 'string' || !path.trim()) throw new Error('path（写真のファイルのパス）を入れてください');
+  let real;
+  try { real = realpathSync(resolve(expandHome(path.trim()))); } catch { throw new Error('ファイルが見つかりません'); }
+  const root = roots.find((r) => { const rel = relative(r, real); return rel && !rel.startsWith('..') && !isAbsolute(rel); });
+  if (!root) throw new Error('このフォルダの写真は送れません（SHIP_MCP_UPLOAD_DIRS で許されたフォルダの中だけ）');
+  if (relative(root, real).split(/[\\/]/).some((seg) => seg.startsWith('.'))) throw new Error('隠しフォルダ・隠しファイルの中身は送れません');
+  const st = statSync(real);
+  if (!st.isFile()) throw new Error('ファイルではありません');
+  if (st.size <= 0 || st.size > LOCAL_MAX_BYTES) throw new Error('ファイルの大きさが範囲外です');
+  const buf = readFileSync(real);
+  const mime = sniffImage(buf);
+  const extMime = EXT_MIME[extname(real).slice(1).toLowerCase()];
+  if (!mime) throw new Error('JPEG・PNG・WebP の画像ではありません');
+  if (extMime !== mime) throw new Error(`拡張子と中身の形式が合いません（中身は ${mime}）`);
+  return { real, buf, mime, name: basename(real) };
+}
+
+const LOCAL_TOOL_DEF = {
+  name: LOCAL_UPLOAD_TOOL,
+  title: '手元の写真を登録する',
+  description: 'PM のパソコンにある写真（JPEG・PNG・WebP）を、WordPress のメディアに登録する。path にファイルのパスを渡すだけでよい（読み込み・分割・送信はこの中継プログラムが行う。AI が写真の中身を読む必要はない）。位置情報などは WordPress 側で消す。返った attachment_id を ACF の画像の欄や featured_media に使う。メディアの写真は、記事が下書きのままでも URL を知っていれば見られるので、公開してよい写真だけにする。',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      post_type: { type: 'string', description: '使う投稿タイプ（list-post-types の name）' },
+      path: { type: 'string', description: '写真のファイルのパス（~ 可）' },
+      title: { type: 'string', maxLength: 200 },
+      alt: { type: 'string', maxLength: 300, description: '代替テキスト（写真の内容を短く。お客様の名前・住所は入れない）' },
+      attach_to_post_id: { type: 'integer', minimum: 1, description: '任意。同じ投稿タイプの下書きに添付するとき' },
+    },
+    required: ['post_type', 'path'],
+    additionalProperties: false,
+  },
+  annotations: { title: '手元の写真を登録する', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+};
 
 // ---- 送受信 ----------------------------------------------------------------
 
@@ -170,6 +235,9 @@ export class Bridge {
       return rpcError(null, -32700, 'JSON として読めません');
     }
     const isRequest = msg && typeof msg === 'object' && typeof msg.method === 'string' && msg.id !== undefined && msg.id !== null;
+    if (isRequest && msg.method === 'tools/call' && msg.params?.name === LOCAL_UPLOAD_TOOL) {
+      return JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: await this.localUpload(msg.params.arguments || {}) });
+    }
     const r = await this.send('POST', JSON.stringify(msg));
     if (!r.ok) return isRequest ? rpcError(msg.id, -32001, r.message) : (log(r.message), null);
     if (r.status === 202 || r.body.length === 0) return null;
@@ -183,12 +251,68 @@ export class Bridge {
       if (isRequest && msg.method === 'initialize' && out.result?.protocolVersion) {
         this.protocolVersion = String(out.result.protocolVersion);
       }
+      // サーバーが写真の転送に対応していれば、ローカルの写真ツールを一覧に足す。
+      if (isRequest && msg.method === 'tools/list' && Array.isArray(out.result?.tools) && out.result.tools.some((t) => t.name === 'ship-content-prepare-upload')) {
+        out.result.tools.push(LOCAL_TOOL_DEF);
+      }
       return JSON.stringify(out);
     }
     // REST のエラー（{code, message, data}）を JSON-RPC のエラーにする。
     if (!isRequest) return null;
     const text = typeof out?.message === 'string' ? out.message : 'サーバーが拒否しました';
     return rpcError(msg.id, -32003, `${text}（HTTP ${r.status}${out?.code ? '、' + out.code : ''}）`);
+  }
+
+  // サーバーのツールを、この中継プログラムから呼ぶ（写真の転送用）。
+  async callServerTool(name, args) {
+    this.seq = (this.seq || 0) + 1;
+    const r = await this.send('POST', JSON.stringify({ jsonrpc: '2.0', id: `bridge-${this.seq}`, method: 'tools/call', params: { name, arguments: args } }));
+    if (!r.ok) return { ok: false, message: r.message };
+    let out;
+    try { out = JSON.parse(r.body.toString('utf8')); } catch { return { ok: false, message: `返事が JSON ではありません（HTTP ${r.status}）` }; }
+    if (out.error) return { ok: false, message: out.error.message || 'エラー' };
+    const res = out.result || {};
+    const text = (res.content || []).map((c) => c.text || '').join('');
+    if (res.isError) return { ok: false, message: text || 'エラー' };
+    let body = res.structuredContent;
+    if (!body) { try { body = JSON.parse(text); } catch { body = null; } }
+    return { ok: true, body };
+  }
+
+  async localUpload(args) {
+    const fail = (message) => ({ isError: true, content: [{ type: 'text', text: JSON.stringify({ ok: false, error: { code: 'MEDIA-001', message } }) }] });
+    const allowed = ['post_type', 'path', 'title', 'alt', 'attach_to_post_id'];
+    const extra = Object.keys(args).filter((k) => !allowed.includes(k));
+    if (extra.length) return fail(`使えない項目があります：${extra.join(', ')}`);
+    if (typeof args.post_type !== 'string' || !args.post_type) return fail('post_type を入れてください');
+    let file;
+    try { file = checkLocalImage(args.path, this.cfg.uploadRoots || []); } catch (e) { return fail(e.message); }
+    const sha = createHash('sha256').update(file.buf).digest('hex');
+    const prep = await this.callServerTool('ship-content-prepare-upload', { post_type: args.post_type, filename: file.name, mime_type: file.mime, size_bytes: file.buf.length, sha256: sha });
+    if (!prep.ok) return fail(prep.message);
+    const warnings = [...(prep.body?.warnings || [])];
+    let data = prep.body?.data || {};
+    if (!data.already_uploaded) {
+      const sid = data.upload_session_id;
+      const size = Number(data.chunk_size);
+      const count = Number(data.chunks);
+      if (!sid || !(size > 0) || count !== Math.ceil(file.buf.length / size)) return fail('サーバーの返事（分割の大きさ）が合いません');
+      for (let i = 0; i < count; i++) {
+        const part = file.buf.subarray(i * size, Math.min(file.buf.length, (i + 1) * size));
+        const args2 = { upload_session_id: sid, index: i, content_base64: part.toString('base64'), chunk_sha256: createHash('sha256').update(part).digest('hex') };
+        let r = await this.callServerTool('ship-content-upload-chunk', args2);
+        if (!r.ok) r = await this.callServerTool('ship-content-upload-chunk', args2); // 1回だけ送り直す（同じ中身なら受け付けられる）
+        if (!r.ok) return fail(`分割 ${i + 1}/${count} を送れませんでした：${r.message}`);
+      }
+      const fin = { upload_session_id: sid };
+      for (const k of ['title', 'alt', 'attach_to_post_id']) if (args[k] !== undefined) fin[k] = args[k];
+      const done = await this.callServerTool('ship-content-finish-upload', fin);
+      if (!done.ok) return fail(done.message);
+      data = done.body?.data || {};
+      warnings.push(...(done.body?.warnings || []));
+    }
+    const body = { ok: true, data: { ...data, file: file.name, bytes: file.buf.length }, warnings: [...new Set(warnings)] };
+    return { content: [{ type: 'text', text: JSON.stringify(body) }], structuredContent: body };
   }
 
   async close() {

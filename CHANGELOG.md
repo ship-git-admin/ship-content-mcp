@@ -1,5 +1,13 @@
 # 変更の記録
 
+## 0.3.0-dev（F3：写真の転送・制作方針の画面）
+
+- ツールを3つ足す：`prepare-upload`・`upload-chunk`・`finish-upload`（写真の分割転送。JPEG・PNG・WebP だけ）。
+- 位置情報などのメタデータを消してから登録する（向きは写真に反映。初期は有効）。同じ写真は二度登録しない。
+- 中継プログラムにローカルのツール `ship-content-upload-local-image` を足す（AI はパスを渡すだけ）。
+- 管理画面：写真の上限・メタデータを消す設定・メディアの公開範囲の注意。制作方針の履歴に保存した人、AI が読む内容の確認。
+- `cleanup-tests` で、試験中に登録した写真と期限切れの転送も片付ける。DB の版 3。
+
 ## 0.2.0-dev（F2：下書きの作成・修正）
 
 - ツールを5つ足す：`search-posts`・`get-post`（ACF の値を保存されたままの形で返す、if_match 付き）・`validate-draft`（書かずに確かめる）・`create-draft`・`update-draft`。

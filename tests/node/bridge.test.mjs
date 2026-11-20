@@ -7,13 +7,15 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { generateKeyPairSync, randomBytes, sign as edSign, verify as edVerify } from 'node:crypto';
-import { mkdtempSync, statSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  Bridge, canonicalRequest, canonicalResponse, loadConfig, publicKeyFromRaw, rawPublicKey, signRequest, verifyResponse,
+  Bridge, canonicalRequest, canonicalResponse, loadConfig, publicKeyFromRaw, rawPublicKey, signRequest, verifyResponse, checkLocalImage, sniffImage, LOCAL_UPLOAD_TOOL,
 } from '../../bridge/ship-content-mcp-bridge.mjs';
+import { createHash } from 'node:crypto';
+import { copyFileSync, mkdirSync as mkdirSync2, realpathSync } from 'node:fs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const codecCli = join(here, '..', 'php', 'codec_cli.php');
@@ -50,7 +52,8 @@ test('PHP の応答の署名を Node が確かめる（改ざんは NG）', () =
 
 // ---- 模擬サーバー ------------------------------------------------------------
 
-function startMock({ mode = 'normal' } = {}) {
+function startMock({ mode = 'normal', chunkSize = 300, existing = '' } = {}) {
+  const uploads = new Map();
   const device = generateKeyPairSync('ed25519');
   const site = generateKeyPairSync('ed25519');
   const keyId = 'k' + randomBytes(8).toString('hex');
@@ -101,7 +104,31 @@ function startMock({ mode = 'normal' } = {}) {
       }
       if (!sessions.has(fields.sessionId)) return reply(400, { jsonrpc: '2.0', id: msg.id ?? null, error: { code: -32600, message: 'Missing Mcp-Session-Id header' } });
       if (msg.id === undefined) return reply(202, null);
-      if (msg.method === 'tools/list') return reply(200, { jsonrpc: '2.0', id: msg.id, result: { tools: [{ name: 'ship-content-list-post-types' }] } });
+      if (msg.method === 'tools/list') return reply(200, { jsonrpc: '2.0', id: msg.id, result: { tools: [{ name: 'ship-content-list-post-types' }, { name: 'ship-content-prepare-upload' }] } });
+      if (msg.method === 'tools/call') {
+        const ok = (data) => reply(200, { jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: JSON.stringify({ ok: true, data }) }], structuredContent: { ok: true, data, warnings: ['公開の注意'] } } });
+        const ng = (text) => reply(200, { jsonrpc: '2.0', id: msg.id, result: { isError: true, content: [{ type: 'text', text }] } });
+        const a = msg.params.arguments;
+        if (msg.params.name === 'ship-content-prepare-upload') {
+          if (existing && a.sha256 === existing) return ok({ already_uploaded: true, attachment_id: 777 });
+          const id = randomBytes(16).toString('hex');
+          uploads.set(id, { a, parts: [] });
+          return ok({ already_uploaded: false, upload_session_id: id, chunk_size: chunkSize, chunks: Math.ceil(a.size_bytes / chunkSize) });
+        }
+        if (msg.params.name === 'ship-content-upload-chunk') {
+          const u = uploads.get(a.upload_session_id);
+          const raw = Buffer.from(a.content_base64, 'base64');
+          if (!u || createHash('sha256').update(raw).digest('hex') !== a.chunk_sha256) return ng('{"ok":false,"error":{"code":"MEDIA-001"}}');
+          u.parts[a.index] = raw;
+          return ok({ received: u.parts.filter(Boolean).length });
+        }
+        if (msg.params.name === 'ship-content-finish-upload') {
+          const u = uploads.get(a.upload_session_id);
+          const all = Buffer.concat(u.parts);
+          if (createHash('sha256').update(all).digest('hex') !== u.a.sha256) return ng('{"ok":false,"error":{"code":"MEDIA-001","message":"hash"}}');
+          return ok({ attachment_id: 4242, chunks_received: u.parts.length, title: a.title || '' });
+        }
+      }
       return reply(200, { jsonrpc: '2.0', id: msg.id, error: { code: -32601, message: 'Method not found' } });
     });
   });
@@ -129,7 +156,7 @@ test('初期化・セッション・ツール一覧・通知・終了', async ()
     assert.equal(b.protocolVersion, '2025-11-25');
     assert.equal(await b.handleLine(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })), null);
     const r2 = JSON.parse(await b.handleLine(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} })));
-    assert.deepEqual(r2.result.tools.map((t) => t.name), ['ship-content-list-post-types']);
+    assert.deepEqual(r2.result.tools.map((t) => t.name), ['ship-content-list-post-types', 'ship-content-prepare-upload', LOCAL_UPLOAD_TOOL]);
     await b.close();
     assert.equal(m.sessions.size, 0);
     assert.equal(m.log.at(-1).method, 'DELETE');
@@ -237,4 +264,76 @@ test('keygen：600 で保存し、公開鍵を表示し、上書きしない', (
   assert.match(again.stderr.toString(), /上書きしません/);
   const shown = execFileSync(process.execPath, [bridgeFile, 'pubkey', '--key', file]).toString();
   assert.ok(shown.includes(pub));
+});
+
+// ---- 手元の写真 ------------------------------------------------------------
+
+const fixtures = join(here, '..', 'fixtures');
+
+test('写真の判定：画像の印と拡張子', () => {
+  assert.equal(sniffImage(readFileSync(join(fixtures, 'synthetic_gps_orient6.jpg'))), 'image/jpeg');
+  assert.equal(sniffImage(readFileSync(join(fixtures, 'not_image.jpg'))), null);
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'scm-img-')));
+  copyFileSync(join(fixtures, 'synthetic.png'), join(dir, 'p.png'));
+  copyFileSync(join(fixtures, 'synthetic.png'), join(dir, 'renamed.jpg'));
+  copyFileSync(join(fixtures, 'not_image.jpg'), join(dir, 'text.jpg'));
+  mkdirSync2(join(dir, '.secret'));
+  copyFileSync(join(fixtures, 'synthetic.png'), join(dir, '.secret', 'in-hidden.png'));
+  assert.equal(checkLocalImage(join(dir, 'p.png'), [dir]).mime, 'image/png');
+  assert.throws(() => checkLocalImage(join(dir, 'renamed.jpg'), [dir]), /拡張子と中身/);
+  assert.throws(() => checkLocalImage(join(dir, 'text.jpg'), [dir]), /画像ではありません/);
+  assert.throws(() => checkLocalImage(join(dir, '.secret', 'in-hidden.png'), [dir]), /隠し/);
+  assert.throws(() => checkLocalImage(join(fixtures, 'synthetic.png'), [dir]), /このフォルダの写真は送れません/);
+  assert.throws(() => checkLocalImage(join(dir, 'nothing.png'), [dir]), /見つかりません/);
+  assert.throws(() => checkLocalImage(join(dir, '..', 'escape.png'), [dir]), /見つかりません|送れません/);
+});
+
+test('手元の写真を分割して送り、添付 ID を返す（ツール一覧にも出る）', async () => {
+  const m = await startMock({ chunkSize: 300 });
+  try {
+    const cfg = { ...m.cfg, uploadRoots: [realpathSync(fixtures)] };
+    const b = new Bridge(cfg);
+    await b.handleLine(init());
+    const list = JSON.parse(await b.handleLine(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} })));
+    assert.ok(list.result.tools.some((t) => t.name === LOCAL_UPLOAD_TOOL));
+    const out = JSON.parse(await b.handleLine(JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: LOCAL_UPLOAD_TOOL, arguments: { post_type: 'works', path: join(fixtures, 'synthetic_gps_orient6.jpg'), title: '架空' } } })));
+    assert.equal(out.result.isError, undefined);
+    assert.equal(out.result.structuredContent.data.attachment_id, 4242);
+    assert.equal(out.result.structuredContent.data.chunks_received, Math.ceil(statSync(join(fixtures, 'synthetic_gps_orient6.jpg')).size / 300));
+    assert.ok(out.result.structuredContent.warnings.includes('公開の注意'));
+  } finally {
+    await m.close();
+  }
+});
+
+test('同じ写真が登録済みなら、送らずに添付 ID を返す', async () => {
+  const buf = readFileSync(join(fixtures, 'synthetic.png'));
+  const m = await startMock({ existing: createHash('sha256').update(buf).digest('hex') });
+  try {
+    const b = new Bridge({ ...m.cfg, uploadRoots: [realpathSync(fixtures)] });
+    await b.handleLine(init());
+    const out = JSON.parse(await b.handleLine(JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: LOCAL_UPLOAD_TOOL, arguments: { post_type: 'works', path: join(fixtures, 'synthetic.png') } } })));
+    assert.equal(out.result.structuredContent.data.attachment_id, 777);
+    assert.equal(out.result.structuredContent.data.already_uploaded, true);
+  } finally {
+    await m.close();
+  }
+});
+
+test('手元の写真ツール：画像でない・使えない項目は送らない', async () => {
+  const m = await startMock();
+  try {
+    const b = new Bridge({ ...m.cfg, uploadRoots: [realpathSync(fixtures)] });
+    await b.handleLine(init());
+    const call = async (args) => JSON.parse(await b.handleLine(JSON.stringify({ jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name: LOCAL_UPLOAD_TOOL, arguments: args } }))).result;
+    const r1 = await call({ post_type: 'works', path: join(fixtures, 'not_image.jpg') });
+    assert.equal(r1.isError, true);
+    assert.match(r1.content[0].text, /画像ではありません/);
+    const r2 = await call({ post_type: 'works', path: join(fixtures, 'synthetic.png'), url: 'https://example.invalid/a.png' });
+    assert.equal(r2.isError, true);
+    assert.match(r2.content[0].text, /使えない項目/);
+    assert.ok(!m.log.some((l) => l.body.includes('prepare-upload')), '拒否したときはサーバーに送らない');
+  } finally {
+    await m.close();
+  }
 });

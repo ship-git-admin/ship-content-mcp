@@ -16,6 +16,7 @@ use ShipContentMcp\Content\PostTypes;
 use ShipContentMcp\Core\Consts;
 use ShipContentMcp\Core\Settings;
 use ShipContentMcp\MCP\Abilities;
+use ShipContentMcp\Media\UploadService;
 use ShipContentMcp\Policy\Policies;
 use ShipContentMcp\Security\AccessGate;
 use ShipContentMcp\Security\AuditLog;
@@ -54,7 +55,7 @@ final class Command {
 	}
 
 	/**
-	 * 試験の印の付いた下書きを消す（「試験中」の投稿タイプで MCP が作った下書きだけ。公開済みは消さない）。
+	 * 試験の印の付いた下書き・写真を消す（「試験中」の投稿タイプで MCP が作った下書きと、MCP で登録した写真だけ。公開済みは消さない）。
 	 *
 	 * ## OPTIONS
 	 *
@@ -90,8 +91,36 @@ final class Command {
 				'title'     => get_the_title( $id ),
 			);
 		}
+		// 試験中に MCP で登録した写真（試験の印つき）。
+		$media = get_posts(
+			array(
+				'post_type'        => 'attachment',
+				'post_status'      => 'inherit',
+				'meta_key'         => DraftService::META_TEST, // phpcs:ignore WordPress.DB.SlowDBQuery
+				'meta_value'       => '1', // phpcs:ignore WordPress.DB.SlowDBQuery
+				'posts_per_page'   => -1,
+				'fields'           => 'ids',
+				'suppress_filters' => true,
+			)
+		);
+		foreach ( $media as $id ) {
+			if ( '' === (string) get_post_meta( $id, UploadService::META_UPLOADED, true ) ) {
+				continue;
+			}
+			$rows[] = array(
+				'ID'        => $id,
+				'post_type' => 'attachment',
+				'title'     => get_the_title( $id ),
+			);
+		}
+		if ( ! empty( $assoc['yes'] ) ) {
+			$purged = UploadService::maybe_purge( true );
+			if ( $purged > 0 ) {
+				\WP_CLI::log( '期限切れ・古い写真の転送の記録を ' . $purged . ' 件消しました' );
+			}
+		}
 		if ( array() === $rows ) {
-			\WP_CLI::success( '試験の下書きはありません' );
+			\WP_CLI::success( '試験の下書き・写真はありません' );
 			return;
 		}
 		\WP_CLI\Utils\format_items( 'table', $rows, array( 'ID', 'post_type', 'title' ) );
@@ -101,12 +130,16 @@ final class Command {
 		}
 		$n = 0;
 		foreach ( $rows as $r ) {
-			if ( 'draft' === get_post_status( $r['ID'] ) && wp_delete_post( (int) $r['ID'], true ) ) {
+			if ( 'attachment' === $r['post_type'] ) {
+				if ( wp_delete_attachment( (int) $r['ID'], true ) ) {
+					++$n;
+				}
+			} elseif ( 'draft' === get_post_status( $r['ID'] ) && wp_delete_post( (int) $r['ID'], true ) ) {
 				++$n;
 			}
 		}
-		AuditLog::write( 'admin', 'ok', '', 'cleanup-tests deleted ' . $n . ' drafts', array( 'auth' => 'cli' ) );
-		\WP_CLI::success( $n . ' 件の試験の下書きを消しました' );
+		AuditLog::write( 'admin', 'ok', '', 'cleanup-tests deleted ' . $n . ' items', array( 'auth' => 'cli' ) );
+		\WP_CLI::success( $n . ' 件の試験の下書き・写真を消しました' );
 	}
 
 	/**

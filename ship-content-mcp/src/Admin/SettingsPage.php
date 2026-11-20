@@ -116,6 +116,9 @@ final class SettingsPage {
 		self::checkbox_row( 'reject_privileged', '権限の強いユーザーを拒否する', $s['reject_privileged'], '投稿の編集・公開・アップロード・設定変更などの権限を持つユーザーは、MCP で使えません（推奨）。PM には「' . Consts::ROLE_LABEL . '」のユーザーを使ってください。' );
 		self::checkbox_row( 'auth_signature', '端末の署名で認証する', $s['auth_signature'], 'パスワードを通信に乗せません。HTTP の動作確認URLや、Basic 認証のあるサイトでも使えます。' );
 		self::checkbox_row( 'auth_app_password', 'Application Password で認証する', $s['auth_app_password'], 'HTTPS のサイトだけで使えます（WordPress の決まり）。' );
+		echo '<tr><th scope="row"><label for="scm-max">写真の上限</label></th><td><input id="scm-max" type="number" name="media_max_mb" min="1" max="100" value="' . esc_attr( (string) $s['media_max_mb'] ) . '" class="small-text"> MB<p class="description">写真は JPEG・PNG・WebP だけ受け付けます（URL からの取得はしません）。</p></td></tr>';
+		self::checkbox_row( 'strip_metadata', '写真の位置情報などを消す', $s['strip_metadata'], '撮影場所（GPS）・カメラの情報などのメタデータを、登録の前に消します（向きは写真に反映してから消します）。お客様の住所が分かってしまうのを防ぐため、有効のままにしてください。' );
+		echo '<tr><th scope="row">メディアの公開範囲</th><td><p class="description" style="color:#b32d2e">' . esc_html( \ShipContentMcp\Media\UploadService::PUBLIC_NOTICE ) . '</p></td></tr>';
 		echo '<tr><th scope="row"><label for="scm-ip">接続元の制限</label></th><td><textarea id="scm-ip" name="ip_allowlist" rows="4" cols="40" class="code">' . esc_textarea( implode( "\n", $s['ip_allowlist'] ) ) . '</textarea><p class="description">1行に1つ（IP または CIDR）。空なら制限しません。サーバーが受け取った接続元（REMOTE_ADDR）だけを見ます。</p></td></tr>';
 		echo '</table>';
 		submit_button( '保存' );
@@ -143,11 +146,16 @@ final class SettingsPage {
 		submit_button( '制作方針を保存' );
 		echo '</form>';
 		if ( array() !== $p['history'] ) {
-			echo '<h2>変更の履歴（変更前の文、新しい順）</h2><table class="widefat striped"><thead><tr><th>対象</th><th>変更前の日時</th><th>変更前の文</th></tr></thead><tbody>';
+			echo '<h2>変更の履歴（変更前の文、新しい順）</h2><table class="widefat striped"><thead><tr><th>対象</th><th>その文を保存した日時・人</th><th>変更前の文</th></tr></thead><tbody>';
 			foreach ( $p['history'] as $h ) {
-				echo '<tr><td>' . esc_html( (string) $h['scope'] ) . '</td><td>' . esc_html( $h['modified'] ? wp_date( 'Y-m-d H:i', (int) $h['modified'] ) : '（初期）' ) . '</td><td><div style="white-space:pre-wrap;max-height:8em;overflow:auto">' . esc_html( (string) $h['text'] ) . '</div></td></tr>';
+				$who = ! empty( $h['modified_by'] ) ? get_userdata( (int) $h['modified_by'] ) : null;
+				echo '<tr><td>' . esc_html( (string) $h['scope'] ) . '</td><td>' . esc_html( ( $h['modified'] ? wp_date( 'Y-m-d H:i', (int) $h['modified'] ) : '（初期）' ) . ( $who ? '・' . $who->display_name : '' ) ) . '</td><td><div style="white-space:pre-wrap;max-height:8em;overflow:auto">' . esc_html( (string) $h['text'] ) . '</div></td></tr>';
 			}
 			echo '</tbody></table>';
+		}
+		foreach ( $types as $name ) {
+			$out = Policies::for_output( $name );
+			echo '<details style="margin-top:12px"><summary>AI が読む内容の確認（' . esc_html( $name ) . '）</summary><pre style="white-space:pre-wrap;background:#fff;border:1px solid #c3c4c7;padding:8px;max-height:320px;overflow:auto">' . esc_html( (string) wp_json_encode( $out, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT ) ) . '</pre></details>';
 		}
 	}
 
@@ -255,9 +263,10 @@ final class SettingsPage {
 			'post_types'   => array(),
 			'ip_allowlist' => preg_split( '/\R/', (string) wp_unslash( $_POST['ip_allowlist'] ?? '' ) ),
 		);
-		foreach ( array( 'enabled', 'disable_default_server', 'reject_privileged', 'auth_signature', 'auth_app_password' ) as $k ) {
+		foreach ( array( 'enabled', 'disable_default_server', 'reject_privileged', 'auth_signature', 'auth_app_password', 'strip_metadata' ) as $k ) {
 			$in[ $k ] = ! empty( $_POST[ $k ] );
 		}
+		$in['media_max_mb'] = isset( $_POST['media_max_mb'] ) ? absint( $_POST['media_max_mb'] ) : 20;
 		$candidates = PostTypes::candidates();
 		$posted     = isset( $_POST['post_types'] ) && is_array( $_POST['post_types'] ) ? wp_unslash( $_POST['post_types'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput -- Settings::sanitize で検証
 		// phpcs:enable

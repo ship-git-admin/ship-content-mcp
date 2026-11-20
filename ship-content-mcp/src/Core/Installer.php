@@ -2,7 +2,7 @@
 /**
  * 有効化・版上げ（何度実行しても同じ結果になるようにする）。
  *
- * - 表：端末の鍵・使い捨て番号（リプレイ防止）・操作の記録・二重送信の防止（idempotency）
+ * - 表：端末の鍵・使い捨て番号（リプレイ防止）・操作の記録・二重送信の防止（idempotency）・写真の分割転送
  * - ロール：Content MCP Operator（read と専用の権限だけ）
  * - サイトの鍵（応答の署名用）
  * - 設定・制作方針は、すでにあれば変えない（更新で消さない）
@@ -101,6 +101,46 @@ final class Installer {
 ) {$charset};"
 		);
 		self::create_idem_table( $idem, $charset );
+		self::create_upload_tables( $charset );
+	}
+
+	/**
+	 * 写真の分割転送：転送のまとまり（セッション）と、届いた分割（base64 のまま。公開の場所には置かない）。
+	 */
+	private static function create_upload_tables( string $charset ): void {
+		$uploads = self::table( 'uploads' );
+		$chunks  = self::table( 'chunks' );
+		dbDelta(
+			"CREATE TABLE {$uploads} (
+  session_id char(32) NOT NULL,
+  user_id bigint(20) unsigned NOT NULL,
+  post_type varchar(64) NOT NULL,
+  filename varchar(200) NOT NULL,
+  mime varchar(50) NOT NULL,
+  size bigint(20) unsigned NOT NULL,
+  sha256 char(64) NOT NULL,
+  chunk_size int(10) unsigned NOT NULL,
+  chunks int(10) unsigned NOT NULL,
+  status varchar(10) NOT NULL,
+  attachment_id bigint(20) unsigned NOT NULL DEFAULT 0,
+  result longtext NULL,
+  created_at int(10) unsigned NOT NULL,
+  expires_at int(10) unsigned NOT NULL,
+  PRIMARY KEY  (session_id),
+  KEY user_id (user_id),
+  KEY expires_at (expires_at)
+) {$charset};"
+		);
+		dbDelta(
+			"CREATE TABLE {$chunks} (
+  session_id char(32) NOT NULL,
+  idx int(10) unsigned NOT NULL,
+  sha256 char(64) NOT NULL,
+  data longtext NOT NULL,
+  created_at int(10) unsigned NOT NULL,
+  PRIMARY KEY  (session_id,idx)
+) {$charset};"
+		);
 	}
 
 	private static function create_idem_table( string $idem, string $charset ): void {

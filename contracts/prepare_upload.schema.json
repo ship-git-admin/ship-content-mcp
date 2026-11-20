@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/schemas/prepare_upload.schema.json",
+  "title": "Prepare photo upload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "post_type",
+    "filename",
+    "mime_type",
+    "size_bytes",
+    "sha256"
+  ],
+  "properties": {
+    "post_type": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "filename": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "mime_type": {
+      "enum": [
+        "image/jpeg",
+        "image/png",
+        "image/webp"
+      ]
+    },
+    "size_bytes": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{64}$"
+    }
+  }
+}

@@ -8,6 +8,7 @@
  * - reject_privileged：一般の編集権限などを持つユーザーを MCP で使わせない（初期は拒否）。
  * - ip_allowlist：接続元の IP/CIDR（空なら制限しない）。REMOTE_ADDR だけを見る。
  * - auth_signature / auth_app_password：使ってよい認証の方法。
+ * - media_max_mb：写真1枚の上限（MB、1〜100）。strip_metadata：写真の位置情報などのメタデータを消す（初期は消す）。
  *
  * @package ShipContentMcp
  */
@@ -49,6 +50,8 @@ final class Settings {
 			'ip_allowlist'           => array(),
 			'auth_signature'         => true,
 			'auth_app_password'      => true,
+			'media_max_mb'           => 20,
+			'strip_metadata'         => true,
 		);
 	}
 
@@ -88,9 +91,10 @@ final class Settings {
 	public static function sanitize( array $in, bool $use_default_types ): array {
 		$d   = self::defaults();
 		$out = $d;
-		foreach ( array( 'enabled', 'disable_default_server', 'reject_privileged', 'auth_signature', 'auth_app_password' ) as $k ) {
+		foreach ( array( 'enabled', 'disable_default_server', 'reject_privileged', 'auth_signature', 'auth_app_password', 'strip_metadata' ) as $k ) {
 			$out[ $k ] = array_key_exists( $k, $in ) ? self::bool( $in[ $k ] ) : $d[ $k ];
 		}
+		$out['media_max_mb'] = isset( $in['media_max_mb'] ) && is_numeric( $in['media_max_mb'] ) ? max( 1, min( 100, (int) $in['media_max_mb'] ) ) : $d['media_max_mb'];
 		if ( array_key_exists( 'post_types', $in ) && is_array( $in['post_types'] ) ) {
 			$out['post_types'] = array();
 			foreach ( $in['post_types'] as $name => $row ) {

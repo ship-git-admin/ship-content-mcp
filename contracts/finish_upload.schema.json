@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/schemas/finish_upload.schema.json",
+  "title": "Finish photo upload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "upload_session_id"
+  ],
+  "properties": {
+    "upload_session_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "title": {
+      "type": "string",
+      "maxLength": 200
+    },
+    "alt": {
+      "type": "string",
+      "maxLength": 300
+    },
+    "attach_to_post_id": {
+      "type": "integer",
+      "minimum": 1
+    }
+  }
+}

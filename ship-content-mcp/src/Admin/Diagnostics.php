@@ -120,7 +120,7 @@ final class Diagnostics {
 
 		// 表。
 		$missing_tables = array();
-		foreach ( array( 'keys', 'nonces', 'log', 'idem' ) as $t ) {
+		foreach ( array( 'keys', 'nonces', 'log', 'idem', 'uploads', 'chunks' ) as $t ) {
 			$name = Installer::table( $t );
 			if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $name ) ) !== $name ) { // phpcs:ignore WordPress.DB.DirectDatabaseQuery
 				$missing_tables[] = $t;
