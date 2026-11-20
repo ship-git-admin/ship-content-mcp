@@ -272,6 +272,8 @@ final class UploadService {
 			'metadata_removed'  => $strip['removed'],
 			'gps_removed'       => $strip['gps_found'] && $strip['removed'],
 			'attached_to'       => $parent,
+			'url'               => (string) wp_get_attachment_url( $id ),
+			'url_large'         => (string) ( wp_get_attachment_image_src( $id, 'large' )[0] ?? '' ),
 			'test_marked'       => $test,
 			'admin_edit_url'    => admin_url( 'post.php?post=' . $id . '&action=edit' ),
 			'idempotent_replay' => false,

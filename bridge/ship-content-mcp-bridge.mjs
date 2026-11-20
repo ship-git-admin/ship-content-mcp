@@ -160,7 +160,7 @@ export function checkLocalImage(path, roots) {
 const LOCAL_TOOL_DEF = {
   name: LOCAL_UPLOAD_TOOL,
   title: '手元の写真を登録する',
-  description: 'PM のパソコンにある写真（JPEG・PNG・WebP）を、WordPress のメディアに登録する。path にファイルのパスを渡すだけでよい（読み込み・分割・送信はこの中継プログラムが行う。AI が写真の中身を読む必要はない）。位置情報などは WordPress 側で消す。返った attachment_id を ACF の画像の欄や featured_media に使う。メディアの写真は、記事が下書きのままでも URL を知っていれば見られるので、公開してよい写真だけにする。',
+  description: 'PM のパソコンにある写真（JPEG・PNG・WebP）を、WordPress のメディアに登録する。path にファイルのパスを渡すだけでよい（読み込み・分割・送信はこの中継プログラムが行う。AI が写真の中身を読む必要はない）。位置情報などは WordPress 側で消す。返った attachment_id を ACF の画像の欄や featured_media に、url_large を本文（post_content）の img に使う。メディアの写真は、記事が下書きのままでも URL を知っていれば見られるので、公開してよい写真だけにする。',
   inputSchema: {
     type: 'object',
     properties: {

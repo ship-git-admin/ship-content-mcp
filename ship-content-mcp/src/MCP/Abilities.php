@@ -440,7 +440,7 @@ final class Abilities {
 		self::add(
 			self::FINISH_UPLOAD,
 			'写真の転送を仕上げる',
-			'すべての分割を送った後に呼ぶ。写真全体を確かめ、位置情報などのメタデータを消して、メディアに登録し attachment_id を返す。attachment_id は ACF の画像の欄や featured_media に使う。' . UploadService::PUBLIC_NOTICE,
+			'すべての分割を送った後に呼ぶ。写真全体を確かめ、位置情報などのメタデータを消して、メディアに登録し attachment_id と URL を返す。attachment_id は ACF の画像の欄や featured_media に、URL（url_large）は本文（post_content）の img に使う。' . UploadService::PUBLIC_NOTICE,
 			array(
 				'type'                 => 'object',
 				'properties'           => array(
