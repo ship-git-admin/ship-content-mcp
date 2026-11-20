@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/schemas/draft_create.schema.json",
+  "title": "Create draft only",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "post_type",
+    "title",
+    "idempotency_key",
+    "schema_fingerprint"
+  ],
+  "properties": {
+    "post_type": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 300
+    },
+    "content": {
+      "type": "string",
+      "maxLength": 1000000
+    },
+    "acf_changes": {
+      "type": "array",
+      "maxItems": 200,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "field_key",
+          "value"
+        ],
+        "properties": {
+          "kind": {
+            "const": "acf_field"
+          },
+          "field_key": {
+            "type": "string",
+            "pattern": "^field_[A-Za-z0-9_]+$"
+          },
+          "value": {}
+        }
+      }
+    },
+    "featured_media": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "taxonomies": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "taxonomy",
+          "term_ids"
+        ],
+        "properties": {
+          "kind": {
+            "const": "taxonomy_terms"
+          },
+          "taxonomy": {
+            "type": "string",
+            "pattern": "^[a-z0-9_\\-]+$"
+          },
+          "term_ids": {
+            "type": "array",
+            "uniqueItems": true,
+            "maxItems": 100,
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      }
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 128
+    },
+    "schema_fingerprint": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 256
+    }
+  }
+}

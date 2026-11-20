@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/schemas/upload_chunk.schema.json",
+  "title": "Chunk upload request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "upload_session_id",
+    "index",
+    "content_base64",
+    "chunk_sha256"
+  ],
+  "properties": {
+    "upload_session_id": {
+      "type": "string",
+      "minLength": 12,
+      "maxLength": 128
+    },
+    "index": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "content_base64": {
+      "type": "string",
+      "maxLength": 900000,
+      "contentEncoding": "base64"
+    },
+    "chunk_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

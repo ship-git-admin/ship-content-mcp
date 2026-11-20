@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/schemas/mcp_tools.schema.json",
+  "title": "Company Content MCP Tool Invocation",
+  "type": "object",
+  "required": [
+    "tool",
+    "params"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "tool": {
+      "type": "string",
+      "enum": [
+        "list-post-types",
+        "get-acf-schema",
+        "get-creation-policy",
+        "search-posts",
+        "get-post",
+        "prepare-upload",
+        "upload-chunk",
+        "finish-upload",
+        "validate-draft",
+        "create-draft",
+        "update-draft"
+      ]
+    },
+    "params": {
+      "type": "object"
+    },
+    "request_id": {
+      "type": "string",
+      "maxLength": 128
+    }
+  }
+}

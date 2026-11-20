@@ -1,0 +1,31 @@
+{
+  "note": "試験用の架空の構造。実在のサイトの ACF ではない（キーも架空）。",
+  "post_type": "works",
+  "location": {
+    "all": [
+      { "param": "post_type", "operator": "==", "value": "works" },
+      { "param": "post_taxonomy", "operator": "!=", "value": "sys_tag:old_layout" }
+    ]
+  },
+  "field_groups": [
+    {
+      "key": "group_EXAMPLE_FAKE_001",
+      "title": "施工事例（架空）",
+      "fields": [
+        { "key": "field_EXAMPLE_FAKE_intro", "name": "introduction", "label": "施工概要", "type": "textarea", "instructions": "<b>概要</b>を書く" },
+        {
+          "key": "field_EXAMPLE_FAKE_after", "name": "after_section", "label": "施工後の写真", "type": "flexible_content",
+          "layouts": [
+            {
+              "key": "layout_EXAMPLE_FAKE_grid", "name": "image_grid", "label": "写真レイアウト", "display": "block",
+              "sub_fields": [
+                { "key": "field_EXAMPLE_FAKE_grid", "name": "grid_columns", "label": "PCの列数", "type": "select", "choices": { "col1": "1カラム", "col2": "2カラム", "col3": "3カラム" } },
+                { "key": "field_EXAMPLE_FAKE_photo", "name": "photo", "label": "写真", "type": "image", "return_format": "id" }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
