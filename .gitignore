@@ -27,3 +27,5 @@ reports/
 /dist/
 *.zip
 node_modules/
+__pycache__/
+*.pyc
