@@ -230,7 +230,8 @@ final class Validator {
 		if ( 'wysiwyg' !== ( $f['type'] ?? '' ) && ! str_contains( $s, '<' ) ) {
 			return $s;
 		}
-		$clean = wp_kses_post( $s );
+		// script・style は中身ごと消す（wp_kses_post はタグだけを消し、中の文字を本文に残すため）。
+		$clean = wp_kses_post( (string) preg_replace( '#<(script|style)\b[^>]*>.*?</\1\s*>#is', '', $s ) );
 		if ( substr_count( $clean, '<' ) < substr_count( $s, '<' ) ) {
 			$this->warnings[] = '使えない HTML（スクリプトなど）を取り除きました：' . (string) ( $f['label'] ?? $path );
 		}

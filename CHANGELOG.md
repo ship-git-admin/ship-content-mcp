@@ -9,6 +9,8 @@
 - 二重送信の防止（idempotency_key、専用の表）。
 - 投稿タイプの状態に「試験中」を足す。試験中に作った下書きには試験の印。`wp ship-content-mcp cleanup-tests --yes` で片付け。
 - 契約：`draft_patch` に `schema_fingerprint`・`allow_removals`、`validate_draft` を追加。
+- 書いた後に ACF の値を最新のリビジョンへ写す（プレビューで空に見えないように）。
+- script・style は中身ごと消す。
 
 ## 0.1.0-dev（F1：読み取りと接続の基盤）
 

@@ -26,3 +26,5 @@
 | D-022 | 文字列（text・textarea）は HTML を含むときだけ `wp_kses_post`、wysiwyg は常に。本文（post_content）は WordPress の標準（PM のユーザーには unfiltered_html がないので kses が効く） | スクリプトなどを消す。「&」などの普通の文字を書き換えない |
 | D-023 | 関連する記事は公開済み・欄が許す投稿タイプだけ。画像は既存の画像の添付 ID（写真の転送は F3） | ACF 6.8.11 も、読めない投稿を関連に保存しない。URL からの取得はしない（SSRF を防ぐ） |
 | D-024 | 必須の欄が空でも下書きは保存し、警告（missing_required）で返す | 下書きは途中の状態を許す。公開は人が管理画面で行う |
+| D-025 | ACF の値を書いた後に `acf_save_post_revision`（ACF の公式の関数）で最新のリビジョンへ写す | ACF はプレビューのとき値を最新のリビジョンから読む。update_field で書いた値は写らず、題名などの修正でリビジョンができるとプレビューが空になる（実機で確認） |
+| D-026 | text・textarea・wysiwyg の `script`・`style` は、中身ごと消してから wp_kses_post を通す | wp_kses_post はタグだけを消し、中の文字（`alert(1)` など）を本文に残すため（実機で確認） |

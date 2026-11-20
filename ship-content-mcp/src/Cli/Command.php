@@ -61,6 +61,8 @@ final class Command {
 	 * [--yes]
 	 * : 付けたときだけ消す（付けなければ一覧を表示するだけ）
 	 *
+	 * @subcommand cleanup-tests
+	 *
 	 * @param list<string>          $args
 	 * @param array<string,string>  $assoc
 	 */

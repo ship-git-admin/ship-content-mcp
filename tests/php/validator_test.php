@@ -27,7 +27,8 @@ function get_attached_file( $id ) {
 	return '/uploads/' . ( $GLOBALS['fx_posts'][ (int) $id ]->file ?? '' );
 }
 function wp_kses_post( $s ) {
-	$s = preg_replace( '#<script\b[^>]*>.*?</script>#is', '', (string) $s );
+	// 本物の kses と同じく、許されないタグはタグだけを消し、中の文字は残す（代わりの最小限）。
+	$s = preg_replace( '#</?(script|style)\b[^>]*>#i', '', (string) $s );
 	return preg_replace( '/\son\w+="[^"]*"/i', '', $s );
 }
 function is_email( $s ) {
@@ -183,6 +184,8 @@ $check( '入れ子の欄の候補を教える', str_contains( $err[0]['message']
 // 無害化・警告。
 [ $out, $err, $warn ] = $run( array( $c( 'field_w', '<p onclick="x()">本文</p><script>alert(1)</script>' ), $c( 'field_cond', '条件の欄' ) ) );
 $check( 'wysiwyg のスクリプトを消す', '<p>本文</p>' === $out['field_w'], $out['field_w'] ?? '' );
+[ $out2 ] = $run( array( $c( 'field_ta', "前<script type=\"text/javascript\">alert(1)</script >後<STYLE>p{}</STYLE>" ) ) );
+$check( 'script・style は中身ごと消す（文字を残さない）', '前後' === $out2['field_ta'], $out2['field_ta'] ?? '' );
 $check( '消したことを警告', (bool) preg_grep( '/取り除きました/u', $warn ) );
 $check( '条件表示の欄を警告', (bool) preg_grep( '/条件によって/u', $warn ) );
 

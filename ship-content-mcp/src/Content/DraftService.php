@@ -532,6 +532,19 @@ final class DraftService {
 		foreach ( $values as $key => $value ) {
 			update_field( $key, $value, $post_id );
 		}
+		self::sync_revision( $post_id );
+	}
+
+	/**
+	 * ACF の値を最新のリビジョンへ写す。
+	 *
+	 * ACF はプレビューのとき、値を投稿ではなく最新のリビジョンから読む。管理画面の保存なら ACF が写すが、
+	 * update_field で書いたときは写らないので、ACF の公式の関数で写す（写さないとプレビューで空に見える）。
+	 */
+	public static function sync_revision( int $post_id ): void {
+		if ( function_exists( 'acf_save_post_revision' ) ) {
+			acf_save_post_revision( $post_id );
+		}
 	}
 
 	/**
@@ -567,6 +580,7 @@ final class DraftService {
 		if ( null !== $plan['featured_media'] ) {
 			set_post_thumbnail( $post_id, (int) $plan['featured_media'] );
 		}
+		// ACF を書かない修正（題名だけなど）でも、新しいリビジョンに ACF の値を写すため write_acf を通す。
 		$this->write_acf( $post_id, $plan['acf_values'] );
 	}
 
@@ -628,6 +642,7 @@ final class DraftService {
 			foreach ( (array) $snap['acf'] as $key => $value ) {
 				update_field( $key, $value, $post_id );
 			}
+			self::sync_revision( $post_id );
 			AuditLog::write( 'tool', 'restored', 'SYS-001', 'restored from snapshot', array( 'post_id' => $post_id ) );
 		} catch ( \Throwable $e ) {
 			AuditLog::write( 'tool', 'error', 'SYS-001', 'restore failed: ' . mb_substr( $e->getMessage(), 0, 150 ), array( 'post_id' => $post_id ) );
