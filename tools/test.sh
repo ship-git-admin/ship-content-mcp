@@ -39,4 +39,9 @@ print("OK")
 '
 
 echo "== 中継プログラム"
-node --test tests/node/bridge.test.mjs 2>&1 | grep -E '^ℹ (pass|fail)'
+# 出力の形を指定する（Node 22 は画面でないとき TAP で出すため）。合否は終了コードで決める。
+if ! out=$(node --test --test-reporter=spec tests/node/bridge.test.mjs 2>&1); then
+  echo "$out"
+  exit 1
+fi
+echo "$out" | grep -E '^ℹ (pass|fail)' || true
