@@ -8,26 +8,26 @@
 - 制作方針は、管理画面に自然な文章で書きます（サイト共通・投稿タイプ別）。
 - 公開・予約・削除・ACF の定義の変更・テーマやプラグインの変更は、できません。
 
-> 版 0.9.0-dev（ブラウザで許可する接続の試作）。PM の試運用の前の段階です。
+> 版 0.9.0。PM の試運用の前の段階です。
 
 ## 必要なもの
 
 - WordPress 6.9 以上（Abilities API）、PHP 8.1 以上（sodium）
 - 公式 MCP Adapter（WordPress.org のプラグイン `mcp-adapter`）
 - ACF（入力欄の構造を読むとき）
-- PM の AI：HTTP の MCP に対応したもの（Claude Code・Codex など）。トークンを貼るだけ（[docs/PM_GUIDE.md](docs/PM_GUIDE.md) の 0.）。署名方式を使うときだけ Node.js 18 以上（中継プログラム）
+- PM の AI：HTTP の MCP と OAuth に対応したもの（Claude Code・Codex など）。文を貼り、ブラウザで許可するだけ（[docs/PM_GUIDE.md](docs/PM_GUIDE.md) の 0.）。署名方式を使うときだけ Node.js 18 以上（中継プログラム）
 
 ## 入れ方（管理者）
 
 1. 公式 MCP Adapter と、このプラグインを入れて有効にします。
 2. 「設定 → Ship Content MCP → 基本設定」で、使う投稿タイプ（初期は `works`）を確かめて、「MCP を受け付ける」を有効にします。
-3. 「接続」タブで、トークンを発行します（MCP 用のユーザーも、そこで作れます）。
+3. 「接続」タブで、PM ごとに招待コードを発行します（MCP 用のユーザーも、そこで作れます）。サーバーの Basic 認証があるサイトでは、AI が自動で呼ぶ道だけを Basic 認証の例外にします（[docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md) の 3.）。
 4. 「制作方針」に、サイト共通と投稿タイプ別の方針を書きます。
 5. 「診断」で、問題がないか確かめます。
 
 REST を止めるコード（セキュリティの Snippet など）があるサイトでは、MCP の入口 `ship-content/` を通すようにしてください。
 
-## PM の AI でつなぐ（ブラウザで許可する：OAuth・試作）
+## PM の AI でつなぐ（ブラウザで許可する：OAuth・おすすめ）
 
 管理者が「接続」タブで**招待コード**を発行すると、「AI に貼る文」（秘密なし）と招待コードが出ます。PM は文を自分の AI（Claude Code・Codex など）に貼り、AI がブラウザを開いたら、「接続の許可」の画面に招待コードを入れて「許可する」を押すだけです。秘密は AI の会話に入りません。
 
@@ -119,7 +119,7 @@ ACF の値は、上の階層も入れ子も field key で指定します。flexi
 
 ## 安全の決まり
 
-- 認証：端末の署名（[docs/AUTH_SIGNATURE.md](docs/AUTH_SIGNATURE.md)）または Application Password。Cookie での利用は不可。
+- 認証：ブラウザで許可する接続（OAuth 2.1・PKCE。招待コード）、トークン、端末の署名（[docs/AUTH_SIGNATURE.md](docs/AUTH_SIGNATURE.md)）、Application Password（HTTPS のみ）。Cookie での利用は不可。
 - ユーザー：`read` と専用の権限だけ。投稿の編集・公開・アップロードなどの権限を持つユーザーは拒否（初期設定）。
 - ツールは自作サーバーの一覧にだけ載せ、コアの REST・公式の既定サーバーには出しません。
 - 記録：接続・ツールの実行・認証の失敗を記録します（本文・画像・パスワードは記録しません）。
