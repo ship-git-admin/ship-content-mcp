@@ -98,6 +98,43 @@ final class Policies {
 		return true;
 	}
 
+	/**
+	 * 初期値を入れる（方針がまだないか、空のときだけ。すでに書いてあるサイトは変えない）。入れたら true。
+	 */
+	public static function seed_defaults(): bool {
+		$stored = get_option( self::OPTION, null );
+		if ( is_array( $stored ) ) {
+			$p     = self::get();
+			$empty = 0 === $p['revision'] && '' === $p['site']['text'] && array() === array_filter( array_column( $p['types'], 'text' ) );
+			if ( ! $empty ) {
+				return false;
+			}
+		}
+		$types = array();
+		foreach ( DefaultPolicies::TYPES as $post_type => $text ) {
+			$types[ $post_type ] = array(
+				'text'        => trim( $text ),
+				'modified'    => 0,
+				'modified_by' => 0,
+			);
+		}
+		update_option(
+			self::OPTION,
+			array(
+				'revision' => 0,
+				'site'     => array(
+					'text'        => trim( DefaultPolicies::SITE ),
+					'modified'    => 0,
+					'modified_by' => 0,
+				),
+				'types'    => $types,
+				'history'  => array(),
+			),
+			false
+		);
+		return true;
+	}
+
 	/** 方針の版（未設定は 1。保存して変わるたびに 1 つ上がる）。 */
 	public static function version(): int {
 		return self::get()['revision'] + 1;

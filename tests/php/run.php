@@ -158,6 +158,15 @@ $e1 = new \ShipContentMcp\Core\DomainError( 'WRITE-001' );
 $e2 = new \ShipContentMcp\Core\DomainError( 'ACF-001' );
 $check( '誤りのコードすべてに「誰が直すか」と「次にすること」がある', $fix_ok && 'admin' === $e1->who_fixes() && 'ai' === $e2->who_fixes() && str_contains( $e1->next_step(), '管理者に送る文' ) );
 
+// 制作方針の初期値。
+$ds = \ShipContentMcp\Policy\DefaultPolicies::SITE;
+$dw = \ShipContentMcp\Policy\DefaultPolicies::TYPES['works'] ?? '';
+$check(
+	'制作方針の初期値：サイト共通（入れる場所）と施工事例があり、長さの上限以内で、地域名の例は伏せている',
+	str_contains( $ds, '入れる場所' ) && str_contains( $ds, 'get-acf-schema' ) && str_contains( $dw, '施工事例' ) && str_contains( $dw, '【○○市】' )
+	&& mb_strlen( $ds ) <= 10000 && mb_strlen( $dw ) <= 10000 && ! str_contains( $ds . $dw, '会津若松' )
+);
+
 $fail = 0;
 foreach ( $results as [ $name, $ok ] ) {
 	echo ( $ok ? '[OK] ' : '[NG] ' ), $name, "\n";
