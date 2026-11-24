@@ -236,13 +236,21 @@ final class SettingsPage {
 	 * @param list<\WP_User> $users
 	 */
 	private static function user_select( string $id, string $name, array $users, bool $offer_new ): string {
+		// すでに MCP 用のユーザー（mcp-operator）がいれば、それを選んでおく（押すたびにユーザーが増えないように）。
+		$preferred = 0;
+		foreach ( $users as $u ) {
+			if ( 1 === preg_match( '/^mcp-operator(-\d+)?$/', (string) $u->user_login ) && '' === AccessGate::user_problem( (int) $u->ID ) ) {
+				$preferred = (int) $u->ID;
+				break;
+			}
+		}
 		$out = '<select id="' . esc_attr( $id ) . '" name="' . esc_attr( $name ) . '">';
 		if ( $offer_new ) {
-			$out .= '<option value="new"' . selected( array() === $users, true, false ) . '>（MCP 用のユーザーを新しく作る）</option>';
+			$out .= '<option value="new"' . selected( 0 === $preferred, true, false ) . '>（MCP 用のユーザーを新しく作る）</option>';
 		}
 		foreach ( $users as $u ) {
 			$why  = AccessGate::user_problem( (int) $u->ID );
-			$out .= '<option value="' . esc_attr( (string) $u->ID ) . '"' . disabled( '' !== $why, true, false ) . '>' . esc_html( $u->display_name . '（' . $u->user_login . '）' . ( '' !== $why ? ' — 使えません：' . $why : '' ) ) . '</option>';
+			$out .= '<option value="' . esc_attr( (string) $u->ID ) . '"' . selected( $offer_new && (int) $u->ID === $preferred, true, false ) . disabled( '' !== $why, true, false ) . '>' . esc_html( $u->display_name . '（' . $u->user_login . '）' . ( '' !== $why ? ' — 使えません：' . $why : '' ) ) . '</option>';
 		}
 		return $out . '</select>';
 	}

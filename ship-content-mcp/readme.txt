@@ -3,7 +3,7 @@ Contributors: shipinc
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.8.1
+Stable tag: 0.8.2
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -17,6 +17,9 @@ WordPress 側では AI を呼びません。公開・予約・削除・ACF の�
 読み取り（投稿タイプ・制作方針・入力欄の構造・記事）、下書きの検証・作成・修正、写真の分割転送のツールがあります。
 
 == Changelog ==
+
+= 0.8.2 =
+* トークンの発行の欄で、MCP 用のユーザー（mcp-operator）がすでにいれば、それを選んでおく（押すたびにユーザーが増えないように）。
 
 = 0.8.1 =
 * 発行したときに出すものを「AI に貼る文」1つにまとめた（Claude Code・Codex など、AI が自分で MCP の設定に登録する）。コマンドは「自分で設定するとき」に折りたたんだ。
