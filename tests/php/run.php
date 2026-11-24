@@ -158,6 +158,16 @@ $e1 = new \ShipContentMcp\Core\DomainError( 'WRITE-001' );
 $e2 = new \ShipContentMcp\Core\DomainError( 'ACF-001' );
 $check( '誤りのコードすべてに「誰が直すか」と「次にすること」がある', $fix_ok && 'admin' === $e1->who_fixes() && 'ai' === $e2->who_fixes() && str_contains( $e1->next_step(), '管理者に送る文' ) );
 
+// 使い方タブ：使う画像がすべてあり、文にサイト固有の名前がない。
+$help_src = (string) file_get_contents( __DIR__ . '/../../ship-content-mcp/src/Admin/HelpPage.php' );
+preg_match_all( "/self::fig\\( '([a-z0-9_]+)'/", $help_src, $hm );
+$help_imgs = array_unique( $hm[1] );
+$missing   = array_filter( $help_imgs, static fn( $n ) => ! is_file( __DIR__ . '/../../ship-content-mcp/assets/help/' . $n . '.webp' ) );
+preg_match( "/IMAGES = array\\((.*?)\\);/s", $help_src, $im );
+preg_match_all( "/'([a-z0-9_]+)'/", $im[1] ?? '', $listed );
+$check( '使い方タブ：使う画像がすべて assets/help にあり、一覧（IMAGES）とそろっている', count( $help_imgs ) >= 15 && array() === $missing && array() === array_diff( $help_imgs, $listed[1] ) && array() === array_diff( $listed[1], $help_imgs ) );
+$check( '使い方タブ：サイトの値は差し込みで出す（サイト固有の名前は tools/secret_scan.py で検査）', str_contains( $help_src, '{site}' ) && str_contains( $help_src, '{https}' ) && str_contains( $help_src, '{invite_days}' ) );
+
 $fail = 0;
 foreach ( $results as [ $name, $ok ] ) {
 	echo ( $ok ? '[OK] ' : '[NG] ' ), $name, "\n";

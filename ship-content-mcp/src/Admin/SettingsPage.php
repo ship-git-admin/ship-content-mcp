@@ -2,7 +2,7 @@
 /**
  * 管理画面「設定 → Ship Content MCP」（管理者だけ）。
  *
- * タブ：基本設定 / 制作方針 / 端末の鍵 / 診断 / 記録
+ * タブ：基本設定 / 制作方針 / 接続 / 診断 / 記録 / 使い方
  * - 保存はすべて admin-post.php（nonce と manage_options を確かめる）。
  * - 秘密（端末の秘密鍵・パスワード・サイトの秘密鍵）は、受け取らない・表示しない。
  * - ACF の項目ごとの設定画面は作らない（制作方針は自由記述）。
@@ -39,6 +39,7 @@ final class SettingsPage {
 		'keys'        => '接続',
 		'diagnostics' => '診断',
 		'log'         => '記録',
+		'help'        => '使い方',
 	);
 
 	public static function hooks(): void {
@@ -86,6 +87,7 @@ final class SettingsPage {
 			'keys'        => self::tab_keys(),
 			'diagnostics' => self::tab_diagnostics(),
 			'log'         => self::tab_log(),
+			'help'        => HelpPage::render(),
 			default       => self::tab_settings(),
 		};
 		echo '</div>';
@@ -314,7 +316,7 @@ final class SettingsPage {
 	private static function invite_section( array $users, string $endpoint ): void {
 		$s = Settings::get();
 		echo '<h2>招待コードを発行する（ブラウザで許可する接続・おすすめ）</h2>';
-		echo '<p>PM は「AI に貼る文」を自分の AI（Claude Code・Codex など）に貼るだけです。AI がブラウザを開くので、PM はその「接続の許可」の画面に招待コードを入れて「許可する」を押します。秘密は AI の会話に入りません。招待コードは ' . esc_html( (string) $s['oauth_invite_days'] ) . ' 日以内に1回だけ使えます。許可した接続は ' . esc_html( (string) $s['oauth_grant_days'] ) . ' 日で切れます（「基本設定」で変えられます）。PM 1人のパソコン1台ごとに1つ発行してください。</p>';
+		echo '<p>PM は「AI に貼る文」を自分の AI（Claude Code・Codex など）に貼るだけです。AI がブラウザを開くので、PM はその「接続の許可」の画面に招待コードを入れて「許可する」を押します。秘密は AI の会話に入りません。招待コードは ' . esc_html( (string) $s['oauth_invite_days'] ) . ' 日以内に1回だけ使えます。許可した接続は ' . esc_html( (string) $s['oauth_grant_days'] ) . ' 日で切れます（「基本設定」で変えられます）。PM 1人のパソコン1台ごとに1つ発行してください。<a href="' . esc_url( admin_url( 'options-general.php?page=' . self::SLUG . '&tab=help' ) ) . '">「使い方」タブ</a>に、管理者向けと PM 向けの取説（印刷して PM に渡せます）があります。</p>';
 		if ( ! $s['auth_oauth'] ) {
 			echo '<div class="notice notice-warning inline"><p>「基本設定」で「ブラウザで許可してつなぐ（OAuth）」が止まっています。</p></div>';
 		}
