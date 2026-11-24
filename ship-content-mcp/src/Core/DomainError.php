@@ -37,6 +37,33 @@ final class DomainError extends \RuntimeException {
 		'SYS-001'      => 'サーバーで問題が起きました。時間をおいて、もう一度お試しください',
 	);
 
+	/**
+	 * 誰が直すか（admin＝サイトの管理者・pm＝PM・ai＝AI が自分で）と、次にすること。
+	 * admin のときだけ、AI は PM に「管理者に送る文」を作る（招待コード・トークン・パスワードは入れない）。
+	 */
+	public const FIX = array(
+		'MCP-001'      => array( 'admin', 'サイトの管理者が「MCP を受け付ける」を有効にする必要があります。PM に「管理者に送る文」を作ってください' ),
+		'MCP-002'      => array( 'admin', '接続の期限切れか停止です。ブラウザで許可する接続なら一度ログインし直し、それでも同じなら管理者に新しい招待コード（またはトークン）を頼むよう PM に伝えてください' ),
+		'MCP-003'      => array( 'admin', 'この投稿タイプは管理者が許可していません。list-post-types で使えるものを確かめ、必要なら PM から管理者に頼んでもらってください' ),
+		'MCP-004'      => array( 'ai', '公開済みの記事は直せません。search-posts で下書きを探すか、新しい下書きを作ってください' ),
+		'ACF-000'      => array( 'admin', 'サイトで ACF が使えません。PM に「管理者に送る文」を作ってください' ),
+		'ACF-001'      => array( 'ai', 'get-acf-schema で入力欄の構造を読み直してから、もう一度送ってください' ),
+		'ACF-002'      => array( 'ai', 'error.details の欄を直して、もう一度送ってください' ),
+		'ACF-003'      => array( 'admin', '管理者が入力欄の構造を確かめ直す必要があります。PM に「管理者に送る文」を作ってください' ),
+		'MEDIA-001'    => array( 'ai', '写真の送り方を最初からやり直してください（get-upload-url を取り直す）' ),
+		'MEDIA-002'    => array( 'pm', '写真の形式か大きさが合いません。JPEG・PNG・WebP に変えるか小さくするよう PM に伝えてください（できるならあなたが変換してもよい）' ),
+		'CONFLICT-001' => array( 'pm', '人が管理画面でこの記事を編集中か、読んだ後に変わりました。PM に編集を閉じてもらってから、get-post で読み直して送ってください' ),
+		'POLICY-001'   => array( 'admin', '制作方針がいまの入力欄に合いません。PM に「管理者に送る文」を作ってください' ),
+		'AUTH-001'     => array( 'admin', 'このユーザー・接続元では使えません。PM に「管理者に送る文」を作ってください' ),
+		'INPUT-001'    => array( 'ai', 'error.details を見て入力を直し、もう一度送ってください' ),
+		'POST-001'     => array( 'ai', '投稿 ID と投稿タイプを確かめてください（search-posts で探せます）' ),
+		'EDIT-001'     => array( 'pm', '既存の内容を消す変更です。消してよいか PM に確かめ、よければ allow_removals を true にして送ってください' ),
+		'WRITE-001'    => array( 'admin', 'この投稿タイプは、管理者がまだ書き込みを許可していません。PM に「管理者に送る文」を作ってください' ),
+		'IDEM-001'     => array( 'ai', '新しい idempotency_key を作って送ってください' ),
+		'IDEM-002'     => array( 'ai', '少し待ってから、同じ内容でもう一度送ってください' ),
+		'SYS-001'      => array( 'ai', '少し待ってからもう一度試してください。何度も続くときは、PM に「管理者に送る文」を作ってください' ),
+	);
+
 	private string $error_code;
 	private string $admin_detail;
 	private bool $retryable;
@@ -57,6 +84,15 @@ final class DomainError extends \RuntimeException {
 
 	public function error_code(): string {
 		return $this->error_code;
+	}
+
+	/** 誰が直すか：admin / pm / ai。 */
+	public function who_fixes(): string {
+		return self::FIX[ $this->error_code ][0] ?? 'ai';
+	}
+
+	public function next_step(): string {
+		return self::FIX[ $this->error_code ][1] ?? self::FIX['SYS-001'][1];
 	}
 
 	public function admin_detail(): string {

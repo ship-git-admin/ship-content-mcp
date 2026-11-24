@@ -127,7 +127,8 @@ final class ConnectionCode {
 			. "- Claude Code：claude mcp add --transport http --scope user <名前> <URL> --header \"<ヘッダー>\"（ヘッダーごとに --header。claude コマンドが見つからなければ、環境変数 CLAUDE_CODE_EXECPATH のものを使う）\n"
 			. "- Codex：~/.codex/config.toml に [mcp_servers.<名前>] を足し、url と http_headers を書く\n"
 			. "- そのほか：その AI の MCP の設定（mcpServers など）に、type http・url・headers で書く\n\n"
-			. 'これは WordPress に記事の下書きを作るための接続です（公開・削除はできません）。X-Ship-MCP-Token は合鍵と同じなので、MCP の設定のほかには書き出さないでください。';
+			. 'これは WordPress に記事の下書きを作るための接続です（公開・削除はできません）。X-Ship-MCP-Token は合鍵と同じなので、MCP の設定のほかには書き出さないでください。'
+			. implode( "\n", OAuth::troubleshooting( $url, false ) );
 		return array(
 			'prompt'      => $prompt,
 			'claude_code' => $claude,

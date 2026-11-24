@@ -140,6 +140,24 @@ $check(
 $pr = OAuth::pm_prompt( 'ship-example', 'https://x.invalid/wp-json/ship-content/mcp' );
 $check( 'OAuth：AI に貼る文（名前・URL・OAuth・登録のしかた。秘密は入らない）', str_contains( $pr, '名前：ship-example' ) && str_contains( $pr, 'URL：https://x.invalid/wp-json/ship-content/mcp' ) && str_contains( $pr, 'OAuth' ) && str_contains( $pr, 'claude mcp login ship-example' ) && str_contains( $pr, 'codex mcp login ship-example' ) && ! str_contains( $pr, 'smcp' ) && ! str_contains( $pr, 'Authorization' ) );
 
+// つながらないときの案内・誰が直すか。
+$check(
+	'つながらないとき（OAuth）：見分け方・管理者に送る文・秘密を入れない指示が入る',
+	str_contains( $pr, 'https://x.invalid/.well-known/oauth-protected-resource' ) && str_contains( $pr, '管理者に送る文' ) && str_contains( $pr, 'who_fixes' ) && str_contains( $pr, '招待コード・トークン・パスワードは入れない' ) && str_contains( $pr, '管理者には送らせず' )
+);
+$check(
+	'つながらないとき（トークン）：見分け方・管理者に送る文が入る',
+	str_contains( $cfg['prompt'], '"method":"ping"' ) && str_contains( $cfg['prompt'], '401 で MCP-002' ) && str_contains( $cfg['prompt'], '管理者に送る文' ) && ! str_contains( $cfg['prompt'], '.well-known' )
+);
+$fix_ok = true;
+foreach ( array_keys( \ShipContentMcp\Core\DomainError::MESSAGES ) as $c ) {
+	$f       = \ShipContentMcp\Core\DomainError::FIX[ $c ] ?? null;
+	$fix_ok  = $fix_ok && is_array( $f ) && in_array( $f[0], array( 'admin', 'pm', 'ai' ), true ) && '' !== $f[1];
+}
+$e1 = new \ShipContentMcp\Core\DomainError( 'WRITE-001' );
+$e2 = new \ShipContentMcp\Core\DomainError( 'ACF-001' );
+$check( '誤りのコードすべてに「誰が直すか」と「次にすること」がある', $fix_ok && 'admin' === $e1->who_fixes() && 'ai' === $e2->who_fixes() && str_contains( $e1->next_step(), '管理者に送る文' ) );
+
 $fail = 0;
 foreach ( $results as [ $name, $ok ] ) {
 	echo ( $ok ? '[OK] ' : '[NG] ' ), $name, "\n";

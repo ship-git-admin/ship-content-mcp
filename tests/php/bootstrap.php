@@ -15,3 +15,4 @@ require __DIR__ . '/../../ship-content-mcp/src/Security/ConnectionCode.php';
 require __DIR__ . '/../../ship-content-mcp/src/Admin/DesktopExtension.php';
 require __DIR__ . '/../../ship-content-mcp/src/Security/DeviceKeys.php';
 require __DIR__ . '/../../ship-content-mcp/src/Security/OAuth.php';
+require __DIR__ . '/../../ship-content-mcp/src/Core/DomainError.php';

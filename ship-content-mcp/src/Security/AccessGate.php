@@ -72,7 +72,11 @@ final class AccessGate {
 			self::$transport_logged = true;
 			AuditLog::write( 'transport', 'denied', $code, $detail );
 		}
-		return new \WP_Error( 'ship_content_mcp_denied', DomainError::MESSAGES[ $code ] . '（' . $code . '）', array( 'status' => $status ) );
+		$msg = DomainError::MESSAGES[ $code ] . '（' . $code . '）';
+		if ( 'MCP-002' !== $code && 'admin' === ( DomainError::FIX[ $code ][0] ?? '' ) ) {
+			$msg .= ' サイトの管理者が直す必要があります（PM から管理者に伝えてください）';
+		}
+		return new \WP_Error( 'ship_content_mcp_denied', $msg, array( 'status' => $status ) );
 	}
 
 	/**

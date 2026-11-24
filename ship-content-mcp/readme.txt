@@ -3,7 +3,7 @@ Contributors: shipinc
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.9.0
+Stable tag: 0.9.1
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -17,6 +17,9 @@ WordPress 側では AI を呼びません。公開・予約・削除・ACF の�
 読み取り（投稿タイプ・制作方針・入力欄の構造・記事）、下書きの検証・作成・修正、写真の分割転送のツールがあります。
 
 == Changelog ==
+
+= 0.9.1 =
+* つながらないとき、AI が原因を見分ける（管理者の設定か、PM の側か）。管理者が直すときだけ、PM に「管理者に送る文」を作る（秘密は入れない）。ツールの誤りに who_fixes（admin・pm・ai）と next_step を付けた。
 
 = 0.9.0 =
 * ブラウザで許可する接続（OAuth 2.1・PKCE）。管理者が招待コードを発行し、PM は秘密の入っていない文を AI に貼り、AI が開いたブラウザで招待コードを入れて許可する。トークンなどの秘密が AI の会話に入らない。
