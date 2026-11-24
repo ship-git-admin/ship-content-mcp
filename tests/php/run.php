@@ -106,7 +106,8 @@ $check( 'AI の設定：Codex（config.toml に足す）', str_contains( $cfg['c
 $j = json_decode( $cfg['json'], true );
 $check( 'AI の設定：mcpServers の形', 'http' === $j['mcpServers']['ship-example']['type'] && $tok === $j['mcpServers']['ship-example']['headers']['X-Ship-MCP-Token'] );
 $cfg2 = ConnectionCode::client_configs( 'ship-x', 'https://x.invalid/wp-json/ship-content/mcp', $tok, '' );
-$check( 'AI の設定：Basic 認証がなければ入れない', ! str_contains( $cfg2['claude_code'], 'Authorization' ) && ! str_contains( $cfg2['codex'], 'Authorization' ) );
+$check( 'AI に貼る文：名前・URL・ヘッダー・登録のしかたが入る', str_contains( $cfg['prompt'], '名前：ship-example' ) && str_contains( $cfg['prompt'], 'URL：http://stage.example.invalid/wp-json/ship-content/mcp' ) && str_contains( $cfg['prompt'], 'X-Ship-MCP-Token: ' . $tok ) && str_contains( $cfg['prompt'], 'Authorization: Basic ' . base64_encode( "gate:p'w" ) ) && str_contains( $cfg['prompt'], 'claude mcp add --transport http' ) && str_contains( $cfg['prompt'], 'config.toml' ) );
+$check( 'AI の設定：Basic 認証がなければ入れない', ! str_contains( $cfg2['claude_code'], 'Authorization' ) && ! str_contains( $cfg2['codex'], 'Authorization' ) && ! str_contains( $cfg2['prompt'], 'Authorization' ) );
 $check( '同梱の中継プログラムが bridge/ と同じ', file_get_contents( __DIR__ . '/../../ship-content-mcp/assets/bridge/ship-content-mcp-bridge.mjs' ) === file_get_contents( __DIR__ . '/../../bridge/ship-content-mcp-bridge.mjs' ) );
 
 $fail = 0;

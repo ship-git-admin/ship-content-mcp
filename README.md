@@ -8,7 +8,7 @@
 - 制作方針は、管理画面に自然な文章で書きます（サイト共通・投稿タイプ別）。
 - 公開・予約・削除・ACF の定義の変更・テーマやプラグインの変更は、できません。
 
-> 版 0.8.0。PM の試運用の前の段階です。
+> 版 0.8.1。PM の試運用の前の段階です。
 
 ## 必要なもの
 
@@ -29,7 +29,7 @@ REST を止めるコード（セキュリティの Snippet など）があるサ
 
 ## PM の AI でつなぐ（トークン）
 
-管理者が「設定 → Ship Content MCP → 接続」でトークンを発行すると、Claude Code・Codex などにそのまま貼れるコマンドが出ます。例（Claude Code）：
+管理者が「設定 → Ship Content MCP → 接続」でトークンを発行すると、「AI に貼る文」が出ます。PM はそれを自分の AI（Claude Code・Codex など）に貼るだけで、AI が自分の MCP の設定に登録します。自分で設定するときのコマンドも出ます。例（Claude Code）：
 
 ```bash
 claude mcp add --transport http --scope user ship-example https://example.invalid/wp-json/ship-content/mcp --header 'X-Ship-MCP-Token: smcp_…'

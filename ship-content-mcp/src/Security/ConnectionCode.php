@@ -87,7 +87,7 @@ final class ConnectionCode {
 	/**
 	 * トークンで直接つなぐための、AI ごとの設定（そのまま貼れる形）。WordPress に依存しない（試験からも使う）。
 	 *
-	 * @return array{claude_code:string,codex:string,json:string}
+	 * @return array{prompt:string,claude_code:string,codex:string,json:string}
 	 */
 	public static function client_configs( string $name, string $url, string $token, string $basic_auth ): array {
 		$headers = array( 'X-Ship-MCP-Token' => $token );
@@ -114,7 +114,22 @@ final class ConnectionCode {
 			),
 			JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
 		);
+		$lines = array();
+		foreach ( $headers as $k => $v ) {
+			$lines[] = '  ' . $k . ': ' . $v;
+		}
+		$prompt = "次の MCP サーバーを、あなた（このアプリ）の MCP の設定に登録してください。登録できたら、登録した内容（トークンは伏せて）と、使い始める方法を短く教えてください。\n\n"
+			. '- 名前：' . $name . "\n"
+			. "- 種類：HTTP（streamable HTTP）\n"
+			. '- URL：' . $url . "\n"
+			. "- 付けるヘッダー：\n" . implode( "\n", $lines ) . "\n\n"
+			. "登録のしかたの例：\n"
+			. "- Claude Code：claude mcp add --transport http --scope user <名前> <URL> --header \"<ヘッダー>\"（ヘッダーごとに --header。claude コマンドが見つからなければ、環境変数 CLAUDE_CODE_EXECPATH のものを使う）\n"
+			. "- Codex：~/.codex/config.toml に [mcp_servers.<名前>] を足し、url と http_headers を書く\n"
+			. "- そのほか：その AI の MCP の設定（mcpServers など）に、type http・url・headers で書く\n\n"
+			. 'これは WordPress に記事の下書きを作るための接続です（公開・削除はできません）。X-Ship-MCP-Token は合鍵と同じなので、MCP の設定のほかには書き出さないでください。';
 		return array(
+			'prompt'      => $prompt,
 			'claude_code' => $claude,
 			'codex'       => $codex,
 			'json'        => $json,

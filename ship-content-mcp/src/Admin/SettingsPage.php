@@ -275,7 +275,7 @@ final class SettingsPage {
 	 */
 	private static function token_section( array $users, string $endpoint ): void {
 		echo '<h2>トークンを発行する</h2>';
-		echo '<p>発行したトークンを、Claude Code・Codex などの AI の MCP の設定に入れるだけでつながります。下に、そのまま貼れるコマンドが出ます。デモサイトで発行しておけば、デモサイトからコピーしたサイトでも、同じトークンが使えます（入口の URL だけサイトごとに変えます）。トークンは合鍵と同じです。漏れたら下の一覧で「止める」を押してください。</p>';
+		echo '<p>発行すると、PM が自分の AI（Claude Code・Codex など）にそのまま貼るだけの文が出ます。AI が自分で MCP の設定に登録します。デモサイトで発行しておけば、デモサイトからコピーしたサイトでも、同じトークンが使えます（入口の URL だけサイトごとに変えます）。トークンは合鍵と同じです。漏れたら下の一覧で「止める」を押してください。</p>';
 
 		$result = null;
 		$error  = '';
@@ -322,22 +322,23 @@ final class SettingsPage {
 			$cmd = ConnectionCode::client_configs( $result['name'], $result['url'], $result['token'], $result['basic'] );
 			echo '<div class="notice notice-success inline" style="padding:12px 16px">';
 			echo '<p><strong>発行しました（鍵 ID ' . esc_html( $result['key_id'] ) . '）。この画面を閉じると、トークンは二度と表示されません。</strong>控えが要るときは、パスワード管理ソフトに入れてください。</p>';
-			$blocks = array(
-				array( 'scm-t-token', 'トークン', $result['token'], 1 ),
-				array( 'scm-t-claude', 'Claude Code：ターミナルに貼って実行（または Claude Code に「このコマンドを実行して」と頼む）', $cmd['claude_code'], 3 ),
-				array( 'scm-t-codex', 'Codex：ターミナルに貼って実行（設定ファイル ~/.codex/config.toml に足します）', $cmd['codex'], 6 ),
-				array( 'scm-t-json', 'ほかの AI（mcpServers の形の設定。Cursor など）', $cmd['json'], 9 ),
-			);
-			foreach ( $blocks as [ $id, $title, $text, $rows ] ) {
+			$copy = static function ( string $id, string $title, string $text, int $rows ): void {
 				echo '<p style="margin:14px 0 4px"><strong>' . esc_html( $title ) . '</strong></p>';
 				echo '<textarea id="' . esc_attr( $id ) . '" class="large-text code" rows="' . (int) $rows . '" readonly onclick="this.select()">' . esc_textarea( $text ) . '</textarea>';
 				echo '<button type="button" class="button" onclick="var t=document.getElementById(\'' . esc_attr( $id ) . '\');t.select();if(navigator.clipboard){navigator.clipboard.writeText(t.value);}else{document.execCommand(\'copy\');}this.textContent=\'コピーしました\';">コピー</button>';
-			}
+			};
+			$copy( 'scm-t-prompt', 'AI に貼る文（Claude Code・Codex など）：これを PM に送り、PM は自分の AI にそのまま貼るだけです', $cmd['prompt'], 14 );
 			if ( DesktopExtension::available() ) {
-				echo '<p style="margin:14px 0 4px"><strong>Claude デスクトップアプリ（チャット）</strong>：このサイト用の拡張機能のファイルを PM に送り、PM はファイルを開いてトークンを貼ります（ファイルにトークンは入っていません）。</p>';
+				echo '<p style="margin:14px 0 4px"><strong>Claude デスクトップアプリ（チャット）を使う PM</strong>：このサイト用の拡張機能のファイルと、下のトークンを送ります。PM はファイルを開いて、トークンを貼ります（ファイルにトークンは入っていません）。</p>';
 				echo DesktopExtension::form( $result['url'], $result['basic'], '拡張機能（' . $result['name'] . '.mcpb）をダウンロード' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- form() でエスケープ済み
 			}
-			echo '<p class="description" style="margin-top:12px">デモサイトからコピーしたサイトで使うときは、上のコマンドの入口の URL（と名前）を、そのサイトのものに変えるだけです。トークンは同じです。</p>';
+			$copy( 'scm-t-token', 'トークン', $result['token'], 1 );
+			echo '<details style="margin-top:12px"><summary style="cursor:pointer">AI に頼まず、自分で設定するとき（コマンド）</summary>';
+			$copy( 'scm-t-claude', 'Claude Code：ターミナルで実行', $cmd['claude_code'], 3 );
+			$copy( 'scm-t-codex', 'Codex：ターミナルで実行（~/.codex/config.toml に足します）', $cmd['codex'], 6 );
+			$copy( 'scm-t-json', 'ほかの AI（mcpServers の形の設定。Cursor など）', $cmd['json'], 9 );
+			echo '</details>';
+			echo '<p class="description" style="margin-top:12px">デモサイトからコピーしたサイトで使うときは、上の文の名前と URL を、そのサイトのものに変えるだけです（トークンは同じ）。PM が AI に「同じトークンで、この URL の MCP をもう1つ足して」と頼んでもかまいません。</p>';
 			echo '</div>';
 		}
 

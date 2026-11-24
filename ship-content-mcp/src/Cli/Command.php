@@ -324,9 +324,11 @@ final class Command {
 			\WP_CLI::log( 'SHIP_MCP_KEY_ID=' . $t['key_id'] );
 			\WP_CLI::log( 'トークン（この1回だけ表示。合鍵と同じなので、共有のチャンネルに貼らない）：' );
 			\WP_CLI::line( $t['token'] );
-			\WP_CLI::log( '--- Claude Code ---' );
+			\WP_CLI::log( '--- AI に貼る文（Claude Code・Codex など） ---' );
+			\WP_CLI::log( $cfg['prompt'] );
+			\WP_CLI::log( '--- 自分で設定するとき：Claude Code ---' );
 			\WP_CLI::log( $cfg['claude_code'] );
-			\WP_CLI::log( '--- Codex ---' );
+			\WP_CLI::log( '--- 自分で設定するとき：Codex ---' );
 			\WP_CLI::log( $cfg['codex'] );
 			\WP_CLI::success( '発行しました' );
 			return;
