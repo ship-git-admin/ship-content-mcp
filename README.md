@@ -8,14 +8,14 @@
 - 制作方針は、管理画面に自然な文章で書きます（サイト共通・投稿タイプ別）。
 - 公開・予約・削除・ACF の定義の変更・テーマやプラグインの変更は、できません。
 
-> 版 0.5.0。PM の試運用の前の段階です。
+> 版 0.6.0。PM の試運用の前の段階です。
 
 ## 必要なもの
 
 - WordPress 6.9 以上（Abilities API）、PHP 8.1 以上（sodium）
 - 公式 MCP Adapter（WordPress.org のプラグイン `mcp-adapter`）
 - ACF（入力欄の構造を読むとき）
-- PM の端末：Node.js 18 以上（中継プログラム）。パソコンに詳しくない PM は、AI に貼る文で Node.js から登録まで AI に任せられる（[docs/PM_GUIDE.md](docs/PM_GUIDE.md) の 0.）
+- PM の端末：Node.js 18 以上（中継プログラム）。パソコンに詳しくない PM は、接続コードと AI に貼る文で、Node.js から登録まで AI に任せられる（[docs/PM_GUIDE.md](docs/PM_GUIDE.md) の 0.）
 
 ## 入れ方（管理者）
 
@@ -28,6 +28,16 @@
 REST を止めるコード（セキュリティの Snippet など）があるサイトでは、MCP の入口 `ship-content/` を通すようにしてください。
 
 ## PM の端末でつなぐ（署名方式）
+
+おすすめは「接続コード」です。管理者が「端末の鍵」で発行し、PM はコードをコピーしてから次を実行します（AI に任せる手順は [docs/PM_GUIDE.md](docs/PM_GUIDE.md) の 0.）。
+
+```bash
+node bridge/ship-content-mcp-bridge.mjs setup --clipboard --register
+```
+
+設定のファイル（`~/.ship-content-mcp/<名前>.json`、権限 600）を作り、つながるかを確かめ、Claude Code に登録します。
+
+鍵を自分の端末で作る方式（keygen）も使えます。
 
 ```bash
 node bridge/ship-content-mcp-bridge.mjs keygen --out ~/.ship-content-mcp/example.key

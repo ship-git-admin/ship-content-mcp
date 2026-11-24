@@ -5,14 +5,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { execFileSync, spawnSync } from 'node:child_process';
-import { generateKeyPairSync, randomBytes, sign as edSign, verify as edVerify } from 'node:crypto';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { createPublicKey, generateKeyPairSync, randomBytes, sign as edSign, verify as edVerify } from 'node:crypto';
 import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   Bridge, canonicalRequest, canonicalResponse, loadConfig, publicKeyFromRaw, rawPublicKey, signRequest, verifyResponse, checkLocalImage, sniffImage, LOCAL_UPLOAD_TOOL,
+  decodeConnectionCode, privateKeyFromSeed,
 } from '../../bridge/ship-content-mcp-bridge.mjs';
 import { createHash } from 'node:crypto';
 import { copyFileSync, mkdirSync as mkdirSync2, realpathSync } from 'node:fs';
@@ -333,6 +334,85 @@ test('手元の写真ツール：画像でない・使えない項目は送ら�
     assert.equal(r2.isError, true);
     assert.match(r2.content[0].text, /使えない項目/);
     assert.ok(!m.log.some((l) => l.body.includes('prepare-upload')), '拒否したときはサーバーに送らない');
+  } finally {
+    await m.close();
+  }
+});
+
+// ---- 接続コード ----------------------------------------------------------------
+
+function runAsync(args, opts = {}) {
+  return new Promise((done) => {
+    const child = spawn(process.execPath, [bridgeFile, ...args], { ...opts, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '', stderr = '';
+    child.stdout.on('data', (d) => { stdout += d; });
+    child.stderr.on('data', (d) => { stderr += d; });
+    child.on('close', (status) => done({ status, stdout, stderr }));
+  });
+}
+
+test('接続コード：PHP が作ったコードを読み、種から同じ公開鍵ができ、その署名を PHP が通す', () => {
+  const made = JSON.parse(execFileSync(php, [codecCli, 'make-code', JSON.stringify({ url: 'http://stage.example.invalid/wp-json/ship-content/mcp', basic_auth: 'gate:p@ss' })]).toString());
+  const c = decodeConnectionCode(`例のサイトの接続コードです。\n${made.code}\nよろしくお願いします`);
+  assert.equal(c.url, 'http://stage.example.invalid/wp-json/ship-content/mcp');
+  assert.equal(c.keyId, 'k0123456789abcdef');
+  assert.equal(c.basicAuth, 'gate:p@ss');
+  assert.equal(c.name, 'stage');
+  const key = privateKeyFromSeed(c.seed);
+  assert.equal(rawPublicKey(createPublicKey(key)).toString('base64'), made.pk);
+  const fields = { method: 'POST', host: 'stage.example.invalid', uri: '/wp-json/ship-content/mcp', timestamp: '1790000000', nonce: 'nonce_nonce_nonce_nonc', keyId: c.keyId, sessionId: '', body: Buffer.from('{}') };
+  const sig = signRequest(key, fields);
+  const res = execFileSync(php, [codecCli, 'verify-request', JSON.stringify({ ...fields, body: '{}', pk: made.pk, sig })]).toString();
+  assert.equal(res, 'OK');
+});
+
+test('接続コード：ない・壊れた・新しすぎる・値が違うものは読まない', () => {
+  const enc = (o) => 'shipmcp1.' + Buffer.from(JSON.stringify(o)).toString('base64url');
+  const good = { v: 1, url: 'https://example.invalid/wp-json/ship-content/mcp', key_id: 'k0123456789abcdef', seed: Buffer.alloc(32, 1).toString('base64'), server_key: rawPublicKey(generateKeyPairSync('ed25519').publicKey).toString('base64') };
+  assert.ok(decodeConnectionCode(enc(good)));
+  assert.throws(() => decodeConnectionCode('コードがありません'), /見つかりません/);
+  assert.throws(() => decodeConnectionCode('shipmcp1.' + Buffer.from('not json').toString('base64url')), /壊れて/);
+  assert.throws(() => decodeConnectionCode(enc({ ...good, v: 2 })), /最新/);
+  assert.throws(() => decodeConnectionCode(enc({ ...good, url: 'ftp://example.invalid/' })), /URL/);
+  assert.throws(() => decodeConnectionCode(enc({ ...good, url: 'https://u:p@example.invalid/x' })), /URL/);
+  assert.throws(() => decodeConnectionCode(enc({ ...good, key_id: 'abc' })), /鍵 ID/);
+  assert.throws(() => decodeConnectionCode(enc({ ...good, seed: 'AAAA' })), /鍵が壊れて/);
+  assert.throws(() => decodeConnectionCode(enc({ ...good, server_key: 'AAAA' })), /長さ/);
+  assert.throws(() => decodeConnectionCode(enc({ ...good, basic_auth: 'nocolon' })), /Basic/);
+});
+
+test('接続コード：setup が設定を 600 で作ってつながり、秘密を画面に出さない', async () => {
+  const m = await startMock();
+  try {
+    const der = m.cfg.privateKey.export({ type: 'pkcs8', format: 'der' });
+    const seed = der.subarray(der.length - 32).toString('base64');
+    const fields = { v: 1, site: '試験のサイト', name: 'Test Site', url: m.cfg.url.toString(), key_id: m.cfg.keyId, seed, server_key: rawPublicKey(m.cfg.serverKey).toString('base64'), basic_auth: 'gate:pw' };
+    const code = 'shipmcp1.' + Buffer.from(JSON.stringify(fields)).toString('base64url');
+    const dir = mkdtempSync(join(tmpdir(), 'scm-'));
+    const msg = join(dir, 'msg.txt');
+    writeFileSync(msg, `試験のサイトの接続コードです。\n${code}\n`);
+    const conf = join(dir, 'conf');
+    const r = await runAsync(['setup', '--code-file', msg, '--dir', conf]);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /接続できました（使える機能 3 個）/);
+    assert.match(r.stdout, /Basic 認証：あり/);
+    assert.match(r.stdout, /claude mcp add ship-content-test-site --scope user -e /);
+    for (const secret of [seed, 'gate:pw', 'PRIVATE KEY', code]) assert.ok(!r.stdout.includes(secret) && !r.stderr.includes(secret), `画面に出さない：${secret.slice(0, 12)}`);
+    const file = join(conf, 'test-site.json');
+    assert.equal(statSync(file).mode & 0o777, 0o600);
+    const saved = JSON.parse(readFileSync(file, 'utf8'));
+    assert.equal(saved.key_id, m.cfg.keyId);
+    assert.match(saved.private_key, /PRIVATE KEY/);
+    const cfg = loadConfig({ SHIP_MCP_CONFIG: file });
+    assert.equal(cfg.keyId, m.cfg.keyId);
+    assert.equal(cfg.basic, 'Basic ' + Buffer.from('gate:pw').toString('base64'));
+    assert.equal(loadConfig({ SHIP_MCP_CONFIG: file, SHIP_MCP_KEY_ID: 'kffffffffffffffff' }).keyId, 'kffffffffffffffff', '環境変数を優先');
+    assert.ok(m.log.every((l) => l.auth === 'Basic ' + Buffer.from('gate:pw').toString('base64')), 'Basic 認証を付けて送る');
+    const again = await runAsync(['setup', '--code-file', msg, '--dir', conf]);
+    assert.equal(again.status, 0, again.stderr);
+    assert.match(again.stdout, /置き換えました/);
+    const none = await runAsync(['setup', '--code-file', join(dir, 'nothing.txt'), '--dir', conf]);
+    assert.notEqual(none.status, 0);
   } finally {
     await m.close();
   }

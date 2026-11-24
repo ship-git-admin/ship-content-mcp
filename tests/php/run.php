@@ -5,6 +5,7 @@
 
 require __DIR__ . '/bootstrap.php';
 
+use ShipContentMcp\Security\ConnectionCode;
 use ShipContentMcp\Security\IpRules;
 use ShipContentMcp\Security\SignatureCodec;
 
@@ -48,6 +49,28 @@ $check( '空なら制限なし', IpRules::allowed( '203.0.113.1', array() ) );
 $check( '不正な IP は拒否', ! IpRules::allowed( 'not-an-ip', array( '0.0.0.0/0' ) ) );
 $check( '設定の形', IpRules::is_valid_entry( '10.0.0.0/8' ) && ! IpRules::is_valid_entry( '10.0.0.0/33' ) && ! IpRules::is_valid_entry( '10.0.0/8' ) && IpRules::is_valid_entry( '::1' ) && ! IpRules::is_valid_entry( '::1/129' ) );
 $check( '/0 は全部', IpRules::allowed( '8.8.8.8', array( '0.0.0.0/0' ) ) );
+
+// 接続コード（WordPress に依存しない部分）。
+$fields = array(
+	'v'          => 1,
+	'site'       => '試験のサイト',
+	'name'       => 'example',
+	'url'        => 'https://example.invalid/wp-json/ship-content/mcp',
+	'key_id'     => 'k0123456789abcdef',
+	'seed'       => base64_encode( str_repeat( "\1", 32 ) ),
+	'server_key' => base64_encode( $pk ),
+	'basic_auth' => 'gate:p@ss/+=',
+);
+$code = ConnectionCode::encode( $fields );
+$check( '接続コード：接頭辞と使える文字だけ', str_starts_with( $code, 'shipmcp1.' ) && 1 === preg_match( '/^shipmcp1\.[A-Za-z0-9_-]+$/', $code ) );
+$check( '接続コード：読み戻すと同じ', ConnectionCode::decode( $code ) === $fields );
+$check( '接続コード：文の中からも読める', ConnectionCode::decode( "例のサイトの接続コードです。\n" . $code . "\nよろしくお願いします" ) === $fields );
+$check( '接続コード：ないとき・壊れたとき', null === ConnectionCode::decode( 'コードなし' ) && null === ConnectionCode::decode( 'shipmcp1.@@@' ) && null === ConnectionCode::decode( 'shipmcp1.' . rtrim( strtr( base64_encode( 'not json' ), '+/', '-_' ), '=' ) ) );
+$check( '短い名前', 'example' === ConnectionCode::default_name( 'https://www.example.co.jp/wp-json/ship-content/mcp' ) && 'my-site-com' === ConnectionCode::default_name( 'http://my_site-com.check.example/x' ) && 'site' === ConnectionCode::default_name( 'not a url' ) );
+$ep = 'http://stage.example.invalid/wp-json/ship-content/mcp';
+$check( '入口：https・別ホストに変えてよい', 'https://www.example.invalid/wp-json/ship-content/mcp' === ConnectionCode::normalize_url( 'https://www.example.invalid/wp-json/ship-content/mcp', $ep ) && $ep === ConnectionCode::normalize_url( $ep, $ep ) );
+$check( '入口：パス違い・ID 入り・別の方式は拒否', '' === ConnectionCode::normalize_url( 'https://www.example.invalid/wp-json/other', $ep ) && '' === ConnectionCode::normalize_url( 'https://u:p@www.example.invalid/wp-json/ship-content/mcp', $ep ) && '' === ConnectionCode::normalize_url( 'ftp://www.example.invalid/wp-json/ship-content/mcp', $ep ) && '' === ConnectionCode::normalize_url( 'https://www.example.invalid/wp-json/ship-content/mcp#x', $ep ) );
+$check( 'Basic 認証の形', ConnectionCode::valid_basic_auth( '' ) && ConnectionCode::valid_basic_auth( 'id:pw' ) && ! ConnectionCode::valid_basic_auth( 'nocolon' ) && ! ConnectionCode::valid_basic_auth( "id:pw\nx" ) );
 
 $fail = 0;
 foreach ( $results as [ $name, $ok ] ) {

@@ -227,6 +227,7 @@ def main() -> int:
         }
         (out_dir / f"ship-content-mcp-{version}.manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         (out_dir / f"ship-content-mcp-{version}.zip.sha256").write_text(f"{manifest['zip_sha256']}  {zip_path.name}\n", encoding="utf-8")
+        (out_dir / "ship-content-mcp-bridge.mjs.sha256").write_text(f"{manifest['bridge']['sha256']}  {bridge_out.name}\n", encoding="utf-8")
     print(f"OK: {zip_path.relative_to(ROOT) if zip_path.is_relative_to(ROOT) else zip_path} files={len(files)} sha256={manifest['zip_sha256']}")
     return 0
 

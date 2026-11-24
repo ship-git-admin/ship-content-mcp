@@ -22,6 +22,7 @@ use ShipContentMcp\MCP\Server;
 use ShipContentMcp\Policy\Policies;
 use ShipContentMcp\Security\AccessGate;
 use ShipContentMcp\Security\AuditLog;
+use ShipContentMcp\Security\ConnectionCode;
 use ShipContentMcp\Security\DeviceKeys;
 use ShipContentMcp\Security\SiteKey;
 
@@ -179,13 +180,17 @@ final class SettingsPage {
 			echo '<div class="notice notice-success inline"><p>登録しました。PM の中継プログラムに、次の値を設定してください（秘密鍵とパスワードは、ここには表示しません）。</p><pre style="white-space:pre-wrap">' . esc_html( implode( "\n", $lines ) ) . '</pre></div>';
 		}
 
-		echo '<h2>端末の鍵を登録する</h2>';
 		$users = get_users(
 			array(
 				'capability' => Consts::CAP,
 				'number'     => 200,
 			)
 		);
+
+		self::issue_section( $users, $endpoint );
+
+		echo '<h2>公開鍵を登録する（鍵を PM のパソコンで作る方式）</h2>';
+		echo '<p class="description">PM が中継プログラムの keygen で鍵を作り、公開鍵を送ってくる場合に使います。秘密が PM のパソコンから一度も出ない、より堅い方式です。ふだんは上の「接続コード」で足ります。</p>';
 		if ( array() === $users ) {
 			echo '<p>MCP を使えるユーザーがいません。まず「ユーザー → 新規追加」で、権限グループ「' . esc_html( Consts::ROLE_LABEL ) . '」のユーザーを PM ごとに作ってください。</p>';
 		} else {
@@ -334,6 +339,86 @@ final class SettingsPage {
 		$ok     = DeviceKeys::revoke( $key_id, get_current_user_id() );
 		AuditLog::write( 'admin', $ok ? 'ok' : 'error', '', 'key revoked', array( 'key_id' => $key_id ) );
 		self::back( 'keys', $ok ? 'key_revoked' : 'error', $ok ? '' : '止められませんでした（すでに止めた鍵の可能性があります）' );
+	}
+
+	// ---- 接続コード ---------------------------------------------------------
+
+	/**
+	 * 接続コードの発行（フォームと、発行した直後の1回だけの表示）。
+	 *
+	 * コードは秘密を含むので、保存も転送もしない：この画面への POST の応答にだけ出す。
+	 * 再読み込みで二重に発行しないよう、フォームごとの使い捨ての印を持つ。
+	 *
+	 * @param list<\WP_User> $users
+	 */
+	private static function issue_section( array $users, string $endpoint ): void {
+		echo '<h2>接続コードを発行する（おすすめ）</h2>';
+		echo '<p>PM のパソコン1台につき1つ発行し、PM に DM で渡します。PM はコードをコピーして、決まった一文を Claude に貼るだけで設定できます。コードは合鍵と同じです（持っている人は、その PM として下書きを作れます）。漏れたら下の一覧で「止める」を押してください。</p>';
+
+		$result = null;
+		$error  = '';
+		if ( 'POST' === ( $_SERVER['REQUEST_METHOD'] ?? '' ) && isset( $_POST['scm_issue'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing -- 下の guard で確認
+			self::guard( 'ship_content_mcp_issue_code' );
+			// phpcs:disable WordPress.Security.NonceVerification.Missing -- guard() で確認済み
+			$token   = isset( $_POST['issue_token'] ) ? sanitize_key( wp_unslash( $_POST['issue_token'] ) ) : '';
+			$user_id = isset( $_POST['user_id'] ) ? absint( $_POST['user_id'] ) : 0;
+			$label   = isset( $_POST['label'] ) ? sanitize_text_field( wp_unslash( $_POST['label'] ) ) : '';
+			$url     = isset( $_POST['url'] ) ? esc_url_raw( wp_unslash( $_POST['url'] ), array( 'http', 'https' ) ) : '';
+			$basic   = isset( $_POST['basic_auth'] ) ? trim( (string) wp_unslash( $_POST['basic_auth'] ) ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- パスワードは文字を変えない（形は ConnectionCode で確かめる）
+			// phpcs:enable
+			$once = 'ship_content_mcp_issued_' . md5( $token );
+			if ( '' === $token || false !== get_transient( $once ) ) {
+				$error = 'このフォームからは発行済みです（再読み込みでは発行しません）。もう一度発行するときは、「端末の鍵」タブを開き直してください。';
+			} elseif ( '' !== AccessGate::user_problem( $user_id ) ) {
+				$error = 'このユーザーは MCP を使えません（専用の権限がない、または権限が強すぎます）';
+			} else {
+				set_transient( $once, 1, DAY_IN_SECONDS );
+				try {
+					$result = ConnectionCode::issue( $user_id, $label, $url, $basic, get_current_user_id() );
+					AuditLog::write( 'admin', 'ok', '', 'connection code issued for user #' . $user_id, array( 'key_id' => $result['key_id'] ) );
+				} catch ( \InvalidArgumentException $e ) {
+					$error = $e->getMessage();
+				}
+			}
+		}
+
+		if ( '' !== $error ) {
+			echo '<div class="notice notice-error inline"><p>' . esc_html( $error ) . '</p></div>';
+		}
+		if ( is_array( $result ) ) {
+			$message = $result['site'] . " の接続コードです。PM 向けの取説の手順で、Claude に設定してください。\n"
+				. "このコードは合鍵と同じです。ほかの人に渡したり、共有のチャンネルに貼ったりしないでください。\n"
+				. $result['code'];
+			echo '<div class="notice notice-success inline" style="padding:12px 16px">';
+			echo '<p><strong>発行しました（鍵 ID ' . esc_html( $result['key_id'] ) . '）。この画面を閉じると、コードは二度と表示されません。</strong></p>';
+			echo '<p>次の文を、そのまま PM に DM で送ってください（PM は文ごとコピーしても、コードだけコピーしても使えます）。</p>';
+			echo '<textarea id="scm-issued" class="large-text code" rows="5" readonly onclick="this.select()">' . esc_textarea( $message ) . '</textarea>';
+			echo '<p><button type="button" class="button button-primary" onclick="var t=document.getElementById(\'scm-issued\');t.select();if(navigator.clipboard){navigator.clipboard.writeText(t.value);}else{document.execCommand(\'copy\');}this.textContent=\'コピーしました\';">送る文をコピー</button></p>';
+			echo '<p class="description">入口：' . esc_html( $result['url'] ) . '　／　AI への登録の名前：ship-content-' . esc_html( $result['name'] ) . '</p>';
+			echo '</div>';
+		}
+
+		if ( array() === $users ) {
+			echo '<p>MCP を使えるユーザーがいません。まず「ユーザー → 新規追加」で、権限グループ「' . esc_html( Consts::ROLE_LABEL ) . '」のユーザーを PM ごとに作ってください。</p>';
+			return;
+		}
+		$action = admin_url( 'options-general.php?page=' . self::SLUG . '&tab=keys' );
+		echo '<form method="post" action="' . esc_url( $action ) . '" autocomplete="off">';
+		wp_nonce_field( 'ship_content_mcp_issue_code' );
+		echo '<input type="hidden" name="scm_issue" value="1"><input type="hidden" name="issue_token" value="' . esc_attr( strtolower( wp_generate_password( 24, false ) ) ) . '">';
+		echo '<table class="form-table" role="presentation">';
+		echo '<tr><th><label for="scm-issue-user">ユーザー</label></th><td><select id="scm-issue-user" name="user_id">';
+		foreach ( $users as $u ) {
+			$why = AccessGate::user_problem( (int) $u->ID );
+			echo '<option value="' . esc_attr( (string) $u->ID ) . '"' . disabled( '' !== $why, true, false ) . '>' . esc_html( $u->display_name . '（' . $u->user_login . '）' . ( '' !== $why ? ' — 使えません：' . $why : '' ) ) . '</option>';
+		}
+		echo '</select></td></tr>';
+		echo '<tr><th><label for="scm-issue-label">端末の名前</label></th><td><input id="scm-issue-label" name="label" class="regular-text" maxlength="100" placeholder="例：PM 山田 MacBook"><p class="description">あとで「止める」ときに見分けるための名前です。</p></td></tr>';
+		echo '<tr><th><label for="scm-issue-url">入口の URL</label></th><td><input id="scm-issue-url" name="url" class="large-text code" value="' . esc_attr( $endpoint ) . '"><p class="description">同じサイトに https:// の入口（正しい証明書）があれば、https:// に変えてください（文章・写真が暗号化されます）。「/wp-json/…」の部分は変えないでください。</p></td></tr>';
+		echo '<tr><th><label for="scm-issue-basic">Basic 認証（ある場合だけ）</label></th><td><input id="scm-issue-basic" name="basic_auth" class="regular-text code" autocomplete="off" placeholder="ID:パスワード"><p class="description">公開前などで、サーバーの Basic 認証がかかっているサイトだけ入れます。コードに入れて PM に渡し、サーバーには保存しません。</p></td></tr>';
+		echo '</table>';
+		submit_button( '接続コードを発行する', 'primary', 'submit', true );
+		echo '</form><hr>';
 	}
 
 	// ---- 部品 -------------------------------------------------------------

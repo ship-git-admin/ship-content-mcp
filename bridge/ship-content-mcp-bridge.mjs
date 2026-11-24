@@ -6,12 +6,17 @@
 // パスワードを通信に乗せないので、HTTP の動作確認URLや、サーバーの Basic 認証のあるサイトでも使える。
 //
 // 使い方：
-//   node ship-content-mcp-bridge.mjs keygen --out <秘密鍵のファイル>   … 鍵を作る（公開鍵を表示）
+//   node ship-content-mcp-bridge.mjs setup --clipboard [--register]   … 管理者が発行した接続コードで設定する（おすすめ）
+//        接続コードはクリップボード（--clipboard）・ファイル（--code-file <ファイル>）・標準入力から読む。
+//        設定を ~/.ship-content-mcp/<名前>.json（600）に保存し、つながるか確かめる。
+//        --register を付けると、Claude Code に「ship-content-<名前>」として登録する（--scope user。--scope で変えられる）。
+//   node ship-content-mcp-bridge.mjs keygen --out <秘密鍵のファイル>   … 鍵を作る（公開鍵を表示。秘密が端末から出ない方式）
 //   node ship-content-mcp-bridge.mjs pubkey --key <秘密鍵のファイル>   … 公開鍵をもう一度表示
 //   node ship-content-mcp-bridge.mjs check                             … つながるか試す（ツールの一覧を表示）
 //   node ship-content-mcp-bridge.mjs                                   … 中継（AI エージェントの設定から起動する）
 //
 // 設定（環境変数）：
+//   SHIP_MCP_CONFIG       setup が作った設定のファイル（これ1つで足りる。下の環境変数があれば、そちらを優先）
 //   SHIP_MCP_URL          MCP の入口（管理画面の「端末の鍵」に表示）
 //   SHIP_MCP_KEY_ID       端末の鍵 ID（管理画面で登録したときに表示）
 //   SHIP_MCP_KEY_FILE     秘密鍵のファイル（keygen で作ったもの）
@@ -25,18 +30,21 @@
 //
 // 署名の決まりは docs/AUTH_SIGNATURE.md（WordPress 側の SignatureCodec と同じ）。
 
+import { execFileSync } from 'node:child_process';
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, randomBytes, sign, verify } from 'node:crypto';
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, statSync, writeSync } from 'node:fs';
-import { delimiter, dirname, isAbsolute, relative, resolve, basename, extname } from 'node:path';
+import { chmodSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, statSync, writeFileSync, writeSync } from 'node:fs';
+import { delimiter, dirname, isAbsolute, join, relative, resolve, basename, extname } from 'node:path';
 import { homedir } from 'node:os';
 import { realpathSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
-export const VERSION = '0.5.1';
+export const VERSION = '0.6.0';
 export const REQ_PREFIX = 'ship-content-mcp-req-v1';
 export const RES_PREFIX = 'ship-content-mcp-res-v1';
+export const CODE_PREFIX = 'shipmcp1.';
 const SPKI_ED25519_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
+const PKCS8_ED25519_PREFIX = Buffer.from('302e020100300506032b657004220420', 'hex');
 const PROTOCOL_VERSION = '2025-11-25';
 
 // ---- 署名の部品（試験からも使う） ------------------------------------------
@@ -67,6 +75,47 @@ export function fingerprint(raw) {
   return sha256hex(raw).slice(0, 16);
 }
 
+export function privateKeyFromSeed(seed) {
+  if (seed.length !== 32) throw new Error('鍵の種の長さが違います（32バイト）');
+  return createPrivateKey({ key: Buffer.concat([PKCS8_ED25519_PREFIX, seed]), format: 'der', type: 'pkcs8' });
+}
+
+// ---- 接続コード（管理者が発行。docs/AUTH_SIGNATURE.md） ------------------------
+
+export function nameSlug(v) {
+  return String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'site';
+}
+
+// 文章の中から接続コードを探して読む（Slack の文ごとコピーしても読める）。値はすべて確かめてから返す。
+export function decodeConnectionCode(text) {
+  const m = /shipmcp1\.([A-Za-z0-9_-]+)/.exec(String(text || ''));
+  if (!m) throw new Error('接続コードが見つかりません（管理者から届いた「shipmcp1.」で始まる文字列をコピーしてから、もう一度実行してください）');
+  let data;
+  try {
+    data = JSON.parse(Buffer.from(m[1], 'base64url').toString('utf8'));
+  } catch {
+    throw new Error('接続コードが壊れています（途中で切れていないか確かめて、もう一度コピーしてください）');
+  }
+  if (!data || typeof data !== 'object' || data.v !== 1) throw new Error('この中継プログラムでは読めない接続コードです（中継プログラムを最新にしてください）');
+  let url;
+  try { url = new URL(String(data.url || '')); } catch { throw new Error('接続コードの入口の URL が違います（管理者に発行し直してもらってください）'); }
+  if ((url.protocol !== 'https:' && url.protocol !== 'http:') || url.username || url.password) throw new Error('接続コードの入口の URL が違います（管理者に発行し直してもらってください）');
+  if (!/^k[0-9a-f]{16}$/.test(String(data.key_id || ''))) throw new Error('接続コードの鍵 ID が違います（管理者に発行し直してもらってください）');
+  const seed = Buffer.from(String(data.seed || ''), 'base64');
+  if (seed.length !== 32) throw new Error('接続コードの鍵が壊れています（管理者に発行し直してもらってください）');
+  publicKeyFromRaw(Buffer.from(String(data.server_key || ''), 'base64'));
+  if (data.basic_auth !== undefined && (typeof data.basic_auth !== 'string' || !data.basic_auth.includes(':'))) throw new Error('接続コードの Basic 認証の形が違います（管理者に発行し直してもらってください）');
+  return {
+    site: String(data.site || ''),
+    name: nameSlug(data.name || url.hostname.replace(/^www\./, '').split('.')[0]),
+    url: String(data.url),
+    keyId: String(data.key_id),
+    seed,
+    serverKey: String(data.server_key),
+    basicAuth: data.basic_auth || '',
+  };
+}
+
 export function signRequest(privateKey, fields) {
   return sign(null, Buffer.from(canonicalRequest(fields), 'utf8'), privateKey).toString('base64');
 }
@@ -88,37 +137,66 @@ function log(msg) {
   process.stderr.write(`[ship-content-mcp-bridge] ${msg}\n`);
 }
 
+function warnIfOpen(file, what) {
+  const st = statSync(file);
+  if (process.platform !== 'win32' && (st.mode & 0o077) !== 0) {
+    log(`注意：${what}が、ほかのユーザーからも読めます（chmod 600 ${file} を勧めます）`);
+  }
+}
+
+// setup が作った設定のファイル（SHIP_MCP_CONFIG）を読む。
+export function readConfigFile(file) {
+  warnIfOpen(file, '設定のファイル');
+  let data;
+  try { data = JSON.parse(readFileSync(file, 'utf8')); } catch { throw new Error(`設定のファイルを読めません：${file}（setup をやり直してください）`); }
+  if (!data || typeof data !== 'object') throw new Error(`設定のファイルの形が違います：${file}`);
+  return data;
+}
+
 export function loadConfig(env = process.env) {
-  const need = ['SHIP_MCP_URL', 'SHIP_MCP_KEY_ID', 'SHIP_MCP_KEY_FILE', 'SHIP_MCP_SERVER_KEY'];
-  const missing = need.filter((k) => !env[k]);
-  if (missing.length) throw new Error(`設定が足りません：${missing.join(', ')}`);
-  const url = new URL(env.SHIP_MCP_URL);
+  const file = env.SHIP_MCP_CONFIG ? readConfigFile(resolve(expandHome(env.SHIP_MCP_CONFIG))) : {};
+  const v = {
+    url: env.SHIP_MCP_URL || file.url || '',
+    keyId: env.SHIP_MCP_KEY_ID || file.key_id || '',
+    serverKey: env.SHIP_MCP_SERVER_KEY || file.server_key || '',
+    basic: env.SHIP_MCP_BASIC_AUTH || file.basic_auth || '',
+    uploadDirs: env.SHIP_MCP_UPLOAD_DIRS || (Array.isArray(file.upload_dirs) ? file.upload_dirs.join(delimiter) : ''),
+  };
+  const missing = [];
+  if (!v.url) missing.push('SHIP_MCP_URL');
+  if (!v.keyId) missing.push('SHIP_MCP_KEY_ID');
+  if (!env.SHIP_MCP_KEY_FILE && !file.private_key) missing.push('SHIP_MCP_KEY_FILE');
+  if (!v.serverKey) missing.push('SHIP_MCP_SERVER_KEY');
+  if (missing.length) throw new Error(`設定が足りません：${missing.join(', ')}（接続コードで設定したときは、SHIP_MCP_CONFIG のファイルを確かめてください）`);
+  const url = new URL(v.url);
   if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error('SHIP_MCP_URL は http:// か https:// で始めてください');
   if (url.username || url.password) throw new Error('SHIP_MCP_URL に ID・パスワードを入れないでください（SHIP_MCP_BASIC_AUTH を使う）');
-  if (!/^k[0-9a-f]{16}$/.test(env.SHIP_MCP_KEY_ID)) throw new Error('SHIP_MCP_KEY_ID の形が違います');
-  const keyFile = resolve(env.SHIP_MCP_KEY_FILE);
-  const st = statSync(keyFile);
-  if (process.platform !== 'win32' && (st.mode & 0o077) !== 0) {
-    log(`注意：秘密鍵のファイルが、ほかのユーザーからも読めます（chmod 600 ${keyFile} を勧めます）`);
+  if (!/^k[0-9a-f]{16}$/.test(v.keyId)) throw new Error('SHIP_MCP_KEY_ID の形が違います');
+  let privateKey;
+  if (env.SHIP_MCP_KEY_FILE) {
+    const keyFile = resolve(expandHome(env.SHIP_MCP_KEY_FILE));
+    warnIfOpen(keyFile, '秘密鍵のファイル');
+    privateKey = createPrivateKey(readFileSync(keyFile));
+  } else {
+    privateKey = createPrivateKey(String(file.private_key));
   }
-  const privateKey = createPrivateKey(readFileSync(keyFile));
-  if (privateKey.asymmetricKeyType !== 'ed25519') throw new Error('秘密鍵が Ed25519 ではありません（keygen で作った鍵を使ってください）');
-  const serverRaw = Buffer.from(env.SHIP_MCP_SERVER_KEY.trim(), 'base64');
+  if (privateKey.asymmetricKeyType !== 'ed25519') throw new Error('秘密鍵が Ed25519 ではありません（keygen で作った鍵か、接続コードを使ってください）');
+  const serverRaw = Buffer.from(String(v.serverKey).trim(), 'base64');
   const serverKey = publicKeyFromRaw(serverRaw);
   let basic = '';
-  if (env.SHIP_MCP_BASIC_AUTH) {
-    if (!env.SHIP_MCP_BASIC_AUTH.includes(':')) throw new Error('SHIP_MCP_BASIC_AUTH は「ID:パスワード」の形にしてください');
-    basic = 'Basic ' + Buffer.from(env.SHIP_MCP_BASIC_AUTH, 'utf8').toString('base64');
+  if (v.basic) {
+    if (!v.basic.includes(':')) throw new Error('SHIP_MCP_BASIC_AUTH は「ID:パスワード」の形にしてください');
+    basic = 'Basic ' + Buffer.from(v.basic, 'utf8').toString('base64');
   }
   const timeoutMs = Math.max(5000, Math.min(600000, Number(env.SHIP_MCP_TIMEOUT_MS || 60000) || 60000));
   if (url.protocol === 'http:') {
     log('注意：HTTP で接続します。パスワードは送りませんが、中身（文章・写真）は暗号化されません。公開予定の内容だけを扱ってください。');
   }
-  const uploadRoots = (env.SHIP_MCP_UPLOAD_DIRS ? env.SHIP_MCP_UPLOAD_DIRS.split(delimiter) : [homedir()])
+  const uploadRoots = (v.uploadDirs ? v.uploadDirs.split(delimiter) : [homedir()])
     .filter(Boolean)
     .map((d) => { try { return realpathSync(resolve(expandHome(d))); } catch { return null; } })
     .filter(Boolean);
-  return { url, keyId: env.SHIP_MCP_KEY_ID, privateKey, serverKey, basic, timeoutMs, uploadRoots };
+  return { url, keyId: v.keyId, privateKey, serverKey, basic, timeoutMs, uploadRoots };
 }
 
 // ---- 写真（ローカルのファイル） ---------------------------------------------------
@@ -367,20 +445,118 @@ function pubkey(args) {
   printPublicKey(createPrivateKey(readFileSync(resolve(keyFile))));
 }
 
+// つながるか確かめる（初期化 → ツールの一覧 → 終了）。
+async function probe(env) {
+  const bridge = new Bridge(loadConfig(env));
+  try {
+    const init = await bridge.handleLine(JSON.stringify({
+      jsonrpc: '2.0', id: 1, method: 'initialize',
+      params: { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'ship-content-mcp-bridge-check', version: VERSION } },
+    }));
+    const initObj = JSON.parse(init);
+    if (initObj.error) throw new Error(`初期化できません：${initObj.error.message}`);
+    await bridge.handleLine(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }));
+    const list = JSON.parse(await bridge.handleLine(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} })));
+    if (list.error) throw new Error(`ツールの一覧を取れません：${list.error.message}`);
+    return { server: initObj.result?.serverInfo ?? {}, protocol: initObj.result?.protocolVersion ?? '?', tools: (list.result?.tools ?? []).map((t) => t.name) };
+  } finally {
+    await bridge.close();
+  }
+}
+
 async function check() {
-  const bridge = new Bridge(loadConfig());
-  const init = await bridge.handleLine(JSON.stringify({
-    jsonrpc: '2.0', id: 1, method: 'initialize',
-    params: { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'ship-content-mcp-bridge-check', version: VERSION } },
-  }));
-  const initObj = JSON.parse(init);
-  if (initObj.error) throw new Error(`初期化できません：${initObj.error.message}`);
-  process.stdout.write(`接続できました：${initObj.result?.serverInfo?.name ?? '?'} ${initObj.result?.serverInfo?.version ?? ''}（MCP ${initObj.result?.protocolVersion ?? '?'}）\n`);
-  await bridge.handleLine(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }));
-  const list = JSON.parse(await bridge.handleLine(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} })));
-  if (list.error) throw new Error(`ツールの一覧を取れません：${list.error.message}`);
-  for (const t of list.result?.tools ?? []) process.stdout.write(`- ${t.name}\n`);
-  await bridge.close();
+  const r = await probe(process.env);
+  process.stdout.write(`接続できました：${r.server.name ?? '?'} ${r.server.version ?? ''}（MCP ${r.protocol}）\n`);
+  for (const t of r.tools) process.stdout.write(`- ${t}\n`);
+}
+
+function readClipboard() {
+  const tries = process.platform === 'darwin' ? [['pbpaste', []]]
+    : process.platform === 'win32' ? [['powershell.exe', ['-NoProfile', '-Command', 'Get-Clipboard -Raw']]]
+      : [['wl-paste', ['--no-newline']], ['xclip', ['-selection', 'clipboard', '-o']], ['xsel', ['--clipboard', '--output']]];
+  for (const [cmd, a] of tries) {
+    try {
+      return execFileSync(cmd, a, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 10000, maxBuffer: 1 << 20 });
+    } catch { /* 次を試す */ }
+  }
+  throw new Error('クリップボードを読めませんでした（接続コードをファイルに保存して、--code-file <ファイル> で指定してください）');
+}
+
+function findClaude() {
+  const candidates = [process.env.CLAUDE_CODE_EXECPATH, 'claude'].filter(Boolean);
+  for (const c of candidates) {
+    try {
+      execFileSync(c, ['--version'], { stdio: 'ignore', timeout: 30000 });
+      return c;
+    } catch { /* 次を試す */ }
+  }
+  return null;
+}
+
+function shellQuote(s) {
+  return /^[A-Za-z0-9_@%+=:,./-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`;
+}
+
+// 接続コードで設定する：設定のファイルを作り（秘密を含むので 600）、つながるか確かめ、必要なら Claude Code に登録する。
+// 接続コードの中身（鍵の種・Basic 認証）は画面に出さない。
+async function setup(args) {
+  let text;
+  if (args.includes('--clipboard')) text = readClipboard();
+  else if (argValue(args, '--code-file')) text = readFileSync(resolve(expandHome(argValue(args, '--code-file'))), 'utf8');
+  else if (!process.stdin.isTTY) text = readFileSync(0, 'utf8');
+  else throw new Error('接続コードの読み方を指定してください（--clipboard か --code-file <ファイル>）');
+  const code = decodeConnectionCode(text);
+  text = '';
+  const name = nameSlug(argValue(args, '--name') || code.name);
+  const dir = resolve(expandHome(argValue(args, '--dir') || '~/.ship-content-mcp'));
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const file = join(dir, `${name}.json`);
+  const config = {
+    site: code.site,
+    url: code.url,
+    key_id: code.keyId,
+    server_key: code.serverKey,
+    private_key: privateKeyFromSeed(code.seed).export({ type: 'pkcs8', format: 'pem' }),
+  };
+  if (code.basicAuth) config.basic_auth = code.basicAuth;
+  const up = argValue(args, '--upload-dirs');
+  if (up) config.upload_dirs = up.split(delimiter).filter(Boolean).map((d) => resolve(expandHome(d)));
+  const replaced = existsSync(file);
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify(config, null, 2) + '\n', { mode: 0o600 });
+  renameSync(tmp, file);
+  if (process.platform !== 'win32') chmodSync(file, 0o600);
+  const out = (s) => process.stdout.write(s + '\n');
+  out(`設定を${replaced ? '置き換えました' : '保存しました'}：${file}（秘密を含むので、人に渡さないでください）`);
+  out(`サイト：${code.site || '（名前なし）'}　入口：${code.url}　鍵 ID：${code.keyId}　Basic 認証：${code.basicAuth ? 'あり' : 'なし'}`);
+
+  const r = await probe({ SHIP_MCP_CONFIG: file });
+  out(`接続できました（使える機能 ${r.tools.length} 個）。`);
+
+  const server = `ship-content-${name}`;
+  const scope = argValue(args, '--scope') || 'user';
+  if (!['user', 'project', 'local'].includes(scope)) throw new Error('--scope は user・project・local のどれかにしてください');
+  const addArgs = ['mcp', 'add', server, '--scope', scope, '-e', `SHIP_MCP_CONFIG=${file}`, '--', process.execPath, fileURLToPath(import.meta.url)];
+  const manual = `claude ${addArgs.map(shellQuote).join(' ')}`;
+  if (args.includes('--register')) {
+    const claude = findClaude();
+    if (!claude) {
+      out('Claude Code のコマンドが見つからないので、登録はしていません。次のコマンドで登録してください：');
+      out(manual);
+      return;
+    }
+    try { execFileSync(claude, ['mcp', 'remove', server, '--scope', scope], { stdio: 'ignore', timeout: 30000 }); } catch { /* なければよい */ }
+    try {
+      execFileSync(claude, addArgs, { stdio: ['ignore', 'pipe', 'pipe'], timeout: 30000 });
+    } catch (e) {
+      throw new Error(`Claude Code に登録できませんでした：${String(e.stderr || e.message || e).trim()}\n手で登録するとき：${manual}`);
+    }
+    out(`Claude Code に「${server}」として登録しました（${scope}）。`);
+    out(`次から：Claude で新しいセッションを開き、「${code.site || 'このサイト'}で使える投稿タイプを教えて」と聞いてください。`);
+  } else {
+    out('Claude Code に登録するコマンド：');
+    out(manual);
+  }
 }
 
 async function serve() {
@@ -402,6 +578,7 @@ async function serve() {
 async function main() {
   const [cmd, ...args] = process.argv.slice(2);
   try {
+    if (cmd === 'setup') return await setup(args);
     if (cmd === 'keygen') return keygen(args);
     if (cmd === 'pubkey') return pubkey(args);
     if (cmd === 'check') return await check();

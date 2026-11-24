@@ -3,7 +3,7 @@ Contributors: shipinc
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.5.1
+Stable tag: 0.6.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -17,6 +17,9 @@ WordPress 側では AI を呼びません。公開・予約・削除・ACF の�
 読み取り（投稿タイプ・制作方針・入力欄の構造・記事）、下書きの検証・作成・修正、写真の分割転送のツールがあります。
 
 == Changelog ==
+
+= 0.6.0 =
+* 接続コード：管理者が管理画面（または WP-CLI）で発行し、PM はコピーして Claude に一文を貼るだけで設定できる。中継プログラムに setup を追加。
 
 = 0.5.1 =
 * 配布の記録（manifest）の直し。機能の変更はなし（更新の試験を兼ねる）。

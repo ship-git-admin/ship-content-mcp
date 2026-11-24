@@ -42,6 +42,6 @@ jobs:
         run: |
           v="${GITHUB_REF_NAME#v}"
           gh release create "${GITHUB_REF_NAME}" \
-            "dist/ship-content-mcp-${v}.zip" "dist/ship-content-mcp-${v}.manifest.json" "dist/ship-content-mcp-${v}.zip.sha256" "dist/ship-content-mcp-bridge.mjs" \
+            "dist/ship-content-mcp-${v}.zip" "dist/ship-content-mcp-${v}.manifest.json" "dist/ship-content-mcp-${v}.zip.sha256" "dist/ship-content-mcp-bridge.mjs" "dist/ship-content-mcp-bridge.mjs.sha256" \
             --draft --title "${GITHUB_REF_NAME}" \
-            --notes "配布用 ZIP: ship-content-mcp-${v}.zip（SHA-256 は .sha256 と manifest を参照）。PM 用の中継プログラム: ship-content-mcp-bridge.mjs（SHA-256 は manifest の bridge）。変更点は CHANGELOG.md。公開前に docs/RELEASE.md の確認項目を済ませること。"
+            --notes "配布用 ZIP: ship-content-mcp-${v}.zip（SHA-256 は .sha256 と manifest を参照）。PM 用の中継プログラム: ship-content-mcp-bridge.mjs（SHA-256 は ship-content-mcp-bridge.mjs.sha256 と manifest の bridge）。変更点は CHANGELOG.md。公開前に docs/RELEASE.md の確認項目を済ませること。"

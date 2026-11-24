@@ -1,6 +1,6 @@
 <?php
 /**
- * WP-CLI：wp ship-content-mcp status|selftest|enable|disable|post-type <name> <status>|keys [list|add|revoke]|cleanup-tests [--yes]
+ * WP-CLI：wp ship-content-mcp status|selftest|enable|disable|post-type <name> <status>|keys [list|issue|add|revoke]|cleanup-tests [--yes]
  *
  * selftest は読み取りが中心。書くのは、使い捨て番号の表への試験の行だけ（最後に消す）。ユーザー・投稿・鍵は作らない。
  *
@@ -21,6 +21,7 @@ use ShipContentMcp\Media\UploadService;
 use ShipContentMcp\Policy\Policies;
 use ShipContentMcp\Security\AccessGate;
 use ShipContentMcp\Security\AuditLog;
+use ShipContentMcp\Security\ConnectionCode;
 use ShipContentMcp\Security\DeviceKeys;
 use ShipContentMcp\Security\IpRules;
 use ShipContentMcp\Security\NonceStore;
@@ -226,16 +227,22 @@ final class Command {
 	 * ## OPTIONS
 	 *
 	 * [<action>]
-	 * : list / add / revoke
+	 * : list / issue / add / revoke（issue は接続コードの発行。コードはこの1回だけ表示する）
 	 * ---
 	 * default: list
 	 * ---
 	 *
 	 * [--for-user=<id>]
-	 * : add のとき：鍵を使うユーザーの ID（Content MCP Operator のユーザー）
+	 * : issue・add のとき：鍵を使うユーザーの ID（Content MCP Operator のユーザー）
 	 *
 	 * [--label=<label>]
-	 * : add のとき：端末の名前
+	 * : issue・add のとき：端末の名前
+	 *
+	 * [--entry-url=<url>]
+	 * : issue のとき：PM に渡す入口（既定はこのサイトの入口。https の入口に変えるときに使う。パスは変えない。WP-CLI の --url とは別）
+	 *
+	 * [--basic-auth-stdin]
+	 * : issue のとき：サーバーの Basic 認証（ID:パスワード）を標準入力から読んで、コードに入れる（コマンドの履歴に残さないため）
 	 *
 	 * [--public-key=<base64>]
 	 * : add のとき：中継プログラムの keygen が表示した公開鍵
@@ -248,6 +255,26 @@ final class Command {
 	 */
 	public function keys( array $args, array $assoc ): void {
 		$action = $args[0] ?? 'list';
+		if ( 'issue' === $action ) {
+			$user_id = (int) ( $assoc['for-user'] ?? 0 );
+			$why     = AccessGate::user_problem( $user_id );
+			if ( '' !== $why ) {
+				\WP_CLI::error( 'このユーザーは MCP を使えません：' . $why );
+			}
+			$basic = isset( $assoc['basic-auth-stdin'] ) ? trim( (string) stream_get_contents( STDIN ) ) : '';
+			try {
+				$r = ConnectionCode::issue( $user_id, (string) ( $assoc['label'] ?? '' ), (string) ( $assoc['entry-url'] ?? '' ), $basic, get_current_user_id() );
+			} catch ( \InvalidArgumentException $e ) {
+				\WP_CLI::error( $e->getMessage() );
+			}
+			AuditLog::write( 'admin', 'ok', '', 'connection code issued via cli for user #' . $user_id, array( 'key_id' => $r['key_id'], 'auth' => 'cli' ) );
+			\WP_CLI::log( 'SHIP_MCP_KEY_ID=' . $r['key_id'] );
+			\WP_CLI::log( '入口：' . $r['url'] . '（AI への登録の名前：ship-content-' . $r['name'] . '）' );
+			\WP_CLI::log( '接続コード（この1回だけ表示。PM に DM で渡す。合鍵と同じなので、共有のチャンネルに貼らない）：' );
+			\WP_CLI::line( $r['code'] );
+			\WP_CLI::success( '発行しました' );
+			return;
+		}
 		if ( 'add' === $action ) {
 			$user_id = (int) ( $assoc['for-user'] ?? 0 );
 			$why     = AccessGate::user_problem( $user_id );
@@ -273,7 +300,7 @@ final class Command {
 			return;
 		}
 		if ( 'list' !== $action ) {
-			\WP_CLI::error( 'list / add / revoke のどれかを指定してください' );
+			\WP_CLI::error( 'list / issue / add / revoke のどれかを指定してください' );
 		}
 		$rows = array();
 		foreach ( DeviceKeys::all() as $r ) {
@@ -401,6 +428,11 @@ final class Command {
 		$secret  = SiteKey::secret_raw();
 		$res_msg = SignatureCodec::canonical_response( $nonce, 200, 'sess', '{}' );
 		$this->check( 'T34 サイトの鍵で応答に署名できる', null !== $secret && '' !== $site_pk && SignatureCodec::verify( (string) base64_decode( SignatureCodec::sign( $res_msg, $secret ), true ), $res_msg, $site_pk ) );
+		$pair35 = sodium_crypto_sign_keypair();
+		$seed35 = substr( sodium_crypto_sign_secretkey( $pair35 ), 0, 32 );
+		$code35 = ConnectionCode::encode( array( 'v' => 1, 'url' => \ShipContentMcp\MCP\Server::endpoint(), 'key_id' => 'k0123456789abcdef', 'seed' => base64_encode( $seed35 ), 'server_key' => $site_pk ? base64_encode( $site_pk ) : '' ) );
+		$back35 = ConnectionCode::decode( "例\n" . $code35 . "\n" );
+		$this->check( 'T35 接続コード：読み戻せて、種から同じ公開鍵ができる', is_array( $back35 ) && sodium_crypto_sign_publickey( sodium_crypto_sign_seed_keypair( (string) base64_decode( (string) $back35['seed'], true ) ) ) === sodium_crypto_sign_publickey( $pair35 ) && '' !== ConnectionCode::normalize_url( \ShipContentMcp\MCP\Server::endpoint(), \ShipContentMcp\MCP\Server::endpoint() ) );
 
 		// --- 投稿タイプ・方針・ACF ---
 		$this->check( 'T40 固定ページ・メディアは候補にならない', ! isset( PostTypes::candidates()['page'] ) && ! isset( PostTypes::candidates()['attachment'] ) );
