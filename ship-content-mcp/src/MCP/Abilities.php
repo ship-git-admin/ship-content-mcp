@@ -382,7 +382,7 @@ final class Abilities {
 		self::add(
 			self::GET_UPLOAD_URL,
 			'写真のアップロード用 URL をもらう',
-			'写真（JPEG・PNG・WebP）をメディアに登録するための、1回だけ使える URL（30分）と、そのまま使える curl のコマンドを返す。シェルのコマンドを実行できる AI は、これを使うのがいちばん簡単：command の <写真のファイルのパス> を手元の写真のパスに置き換えて実行すると、返事の JSON に attachment_id と URL が入っている。1枚ごとに呼ぶ。コマンドを実行できない AI は prepare-upload → upload-chunk → finish-upload を使う。' . UploadService::PUBLIC_NOTICE,
+			'写真（JPEG・PNG・WebP）をメディアに登録するための、1回だけ使える URL（30分）と、そのまま使える curl のコマンドを返す。シェルのコマンドを実行できる AI は、これを使うのがいちばん簡単：command の <写真のファイルのパス> を手元の写真のパスに置き換えて実行すると、返事の JSON に attachment_id と URL が入っている。1枚ごとに呼ぶ。コマンドを実行できない AI は prepare-upload → upload-chunk → finish-upload を使う。写真は必ずこのツールたちで登録する（WordPress の管理画面やブラウザで上げない。PM のログインは要らない）。' . UploadService::PUBLIC_NOTICE,
 			array(
 				'type'                 => 'object',
 				'properties'           => array(

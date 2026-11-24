@@ -43,7 +43,7 @@ import { realpathSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
-export const VERSION = '0.9.3';
+export const VERSION = '0.9.4';
 export const REQ_PREFIX = 'ship-content-mcp-req-v1';
 export const RES_PREFIX = 'ship-content-mcp-res-v1';
 export const CODE_PREFIX = 'shipmcp1.';

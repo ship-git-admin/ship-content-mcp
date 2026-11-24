@@ -149,6 +149,14 @@ $check(
 	'つながらないとき（トークン）：見分け方・管理者に送る文が入る',
 	str_contains( $cfg['prompt'], '"method":"ping"' ) && str_contains( $cfg['prompt'], '401 で MCP-002' ) && str_contains( $cfg['prompt'], '管理者に送る文' ) && ! str_contains( $cfg['prompt'], '.well-known' )
 );
+$check(
+	'切れたとき：前は使えていた場合の直し方と、管理画面・ブラウザで代わりをしない指示が入る（OAuth・トークン）',
+	str_contains( $pr, '前は使えていたのに' ) && str_contains( $pr, '新しい招待コードを頼む' ) && str_contains( $pr, 'WordPress の管理画面・サイトへのログイン・ブラウザの操作で代わりをしない' )
+	&& str_contains( $cfg['prompt'], '前は使えていたのに' ) && str_contains( $cfg['prompt'], 'WordPress の管理画面・サイトへのログイン・ブラウザの操作で代わりをしない' )
+	&& str_contains( $pr, "\n5. ツールの返事が ok:false" ) && str_contains( $cfg['prompt'], "\n4. ツールの返事が ok:false" )
+);
+$oauth_src = (string) file_get_contents( dirname( __DIR__, 2 ) . '/ship-content-mcp/src/Security/OAuth.php' );
+$check( 'OAuth：アクセストークンは接続の期限まで（1時間で切らない）', str_contains( $oauth_src, '$access_to = $grant_exp;' ) && ! str_contains( $oauth_src, 'ACCESS_TTL' ) );
 $fix_ok = true;
 foreach ( array_keys( \ShipContentMcp\Core\DomainError::MESSAGES ) as $c ) {
 	$f       = \ShipContentMcp\Core\DomainError::FIX[ $c ] ?? null;

@@ -4,8 +4,10 @@
  *
  * - 招待コード：管理者が発行する（1回だけ・初期 7日）。サイトには SHA-256 だけを置く（鍵の表の public_key に inv: を付けて）。
  * - 許可すると、その行が「OAuth の接続」になる（public_key は oau:、期限は初期 3か月）。止める・最後に使った日時は鍵の表のまま使う。
- * - AI の登録（Dynamic Client Registration）、認可コード（PKCE S256 だけ。10分・1回だけ）、アクセストークン（1時間）、
+ * - AI の登録（Dynamic Client Registration）、認可コード（PKCE S256 だけ。10分・1回だけ）、アクセストークン（接続の期限まで）、
  *   更新トークン（接続の期限まで。使うたびに入れ替える）。トークン類は oauth_tokens の表に SHA-256 だけを置く。
+ *   アクセストークンを接続の期限までにしたのは、トークンを延長しない AI のアプリ（Codex など）でも、許可した期間はつながるようにするため（0.9.4）。
+ *   使うたびに接続（鍵の表の行）を確かめるので、管理者が止めればその場で使えなくなる。
  * - 戻り先は、このパソコンの中（127.0.0.1・localhost・[::1]）と、アプリ専用の形（cursor:// など）だけ。
  *   https の戻り先（Claude の Web 版など、AI の会社のサーバーからつなぐもの）は、設定で許したときだけ。
  *
@@ -25,7 +27,6 @@ final class OAuth {
 	public const GRANT_MARK     = 'oau:';
 	public const ACCESS_PREFIX  = 'smcpo_';
 	public const REFRESH_PREFIX = 'smcpr_';
-	public const ACCESS_TTL     = 3600;
 	public const CODE_TTL       = 600;
 
 	/** 招待コードの文字（見間違えやすい I・O・0・1 を使わない。32文字）。 */
@@ -377,7 +378,7 @@ final class OAuth {
 		$grant_exp = (int) strtotime( (string) $grant['expires_at'] . ' UTC' );
 		$access    = self::ACCESS_PREFIX . self::random_secret();
 		$refresh   = self::REFRESH_PREFIX . self::random_secret();
-		$access_to = min( time() + self::ACCESS_TTL, $grant_exp );
+		$access_to = $grant_exp; // 接続の期限まで（延長しない AI のため。止めればその場で使えなくなる）。
 		self::store( $access, 'access', $key_id, $client_id, $access_to );
 		self::store( $refresh, 'refresh', $key_id, $client_id, $grant_exp );
 		return array(
@@ -502,6 +503,7 @@ final class OAuth {
 			$lines[] = '   - 「AI の登録が見つかりません」「戻り先が登録と違います」：あなた（ログインをやり直す）';
 			$lines[] = '   - ブラウザで ID とパスワードを聞かれて通れない：PM（サイトの確認用の ID とパスワード。分からなければ管理者）';
 			$lines[] = '3. 許可できたのにツールが見えない：PM（新しい会話にする・アプリを開き直す）。それでも Needs authentication のままなら 1. からやり直す。';
+			$lines[] = '4. 前は使えていたのに、ツールが見えなくなった・「認証が必要（Needs authentication・401・MCP-002）」で断られるようになった：接続が切れている（許可の期限切れ・管理者が止めた・アプリがトークンを延長できなかった）。PM にログインのやり直しを案内する（Claude Code は /mcp → 登録した名前 → 認証。Codex は codex mcp login 登録した名前）。許可の画面では新しい招待コードが要るので、PM が持っていなければ「管理者に送る文」で新しい招待コードを頼む。';
 		} else {
 			$lines[] = '1. あなたがコマンド（curl など）で、上の URL に上のヘッダーを付けて POST し（本文は {"jsonrpc":"2.0","id":1,"method":"ping"}、Content-Type と Accept は application/json）、HTTP の状態と返事を見る。ヘッダーの値は画面に出さない。';
 			$lines[] = '   - 200：サイトの準備はできている（2. へ）';
@@ -510,9 +512,11 @@ final class OAuth {
 			$lines[] = '   - 404 か 503（MCP-001）：管理者の設定（MCP が止まっている、プラグインがない、URL が違う）';
 			$lines[] = '   - つながらない（名前が引けない・時間切れ）：まず PM のネットワークと URL の写し間違い。ほかのサイトは開けるのに、ここだけ開けないなら管理者';
 			$lines[] = '2. 状態は 200 なのにツールが見えない：PM（新しい会話にする・アプリを開き直す）。';
+			$lines[] = '3. 前は使えていたのに、ツールが見えなくなった・401 で断られるようになった：1. で確かめる。401 で MCP-002 なら、トークンが止められている（管理者。「管理者に送る文」で新しいトークンを頼む）。';
 		}
-		$lines[] = '4. ツールの返事が ok:false のときは、error.who_fixes（admin＝管理者・pm＝PM・ai＝あなた）と error.next_step に従う。';
+		$lines[] = ( $oauth ? '5' : '4' ) . '. ツールの返事が ok:false のときは、error.who_fixes（admin＝管理者・pm＝PM・ai＝あなた）と error.next_step に従う。';
 		$lines[] = '';
+		$lines[] = 'ツールが使えないあいだも、WordPress の管理画面・サイトへのログイン・ブラウザの操作で代わりをしないでください（写真のアップロードも同じです）。下書きと写真は、この MCP サーバーのツールだけで扱います。PM に WordPress の ID・パスワードを聞く必要もありません。つながりを直してから続けてください。';
 		$lines[] = '原因が管理者のときだけ、PM に「管理者に送る文」を作って見せ、それをコピーして管理者に送るよう伝えてください。文には、サイトの入口の URL・いつ・何をしたか・出た言葉やコード・確かめた結果（上の状態など）・request_id（あれば）・使っている AI の名前を入れます。招待コード・トークン・パスワードは入れないでください。';
 		$lines[] = '原因が PM の側（パソコン・アプリ・入力の写し間違いなど）のときは、管理者には送らせず、何をどう直すかを短く伝えてください。どちらか分からないときは決めつけず、確かめた結果を PM に見せて、もう一度一緒に確かめてください。';
 		return $lines;
