@@ -417,3 +417,19 @@ test('接続コード：setup が設定を 600 で作ってつながり、秘密
     await m.close();
   }
 });
+
+test('接続コード：SHIP_MCP_CODE だけで設定でき、空の欄の「${…}」は無視し、別のサイトのコードは止める', () => {
+  const site = generateKeyPairSync('ed25519');
+  const siteB64 = rawPublicKey(site.publicKey).toString('base64');
+  const fields = { v: 1, site: '例', name: 'example', url: 'https://example.invalid/wp-json/ship-content/mcp', key_id: 'k0123456789abcdef', seed: Buffer.alloc(32, 7).toString('base64'), server_key: siteB64, basic_auth: 'gate:pw' };
+  const code = '例のサイトの接続コードです。\n' + 'shipmcp1.' + Buffer.from(JSON.stringify(fields)).toString('base64url');
+  const cfg = loadConfig({ SHIP_MCP_CODE: code, SHIP_MCP_UPLOAD_DIRS: '${user_config.photo_dir}', SHIP_MCP_EXPECT_SERVER_KEY: siteB64 });
+  assert.equal(cfg.keyId, 'k0123456789abcdef');
+  assert.equal(cfg.url.toString(), 'https://example.invalid/wp-json/ship-content/mcp');
+  assert.equal(cfg.basic, 'Basic ' + Buffer.from('gate:pw').toString('base64'));
+  assert.equal(rawPublicKey(createPublicKey(cfg.privateKey)).toString('base64'), rawPublicKey(createPublicKey(privateKeyFromSeed(Buffer.alloc(32, 7)))).toString('base64'));
+  assert.ok(cfg.uploadRoots.length === 1, '欄が空なら既定（ホーム）');
+  const other = rawPublicKey(generateKeyPairSync('ed25519').publicKey).toString('base64');
+  assert.throws(() => loadConfig({ SHIP_MCP_CODE: code, SHIP_MCP_EXPECT_SERVER_KEY: other }), /別のサイト用/);
+  assert.throws(() => loadConfig({ SHIP_MCP_CODE: '${user_config.connection_code}' }), /足りません/);
+});

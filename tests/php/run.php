@@ -5,6 +5,7 @@
 
 require __DIR__ . '/bootstrap.php';
 
+use ShipContentMcp\Admin\DesktopExtension;
 use ShipContentMcp\Security\ConnectionCode;
 use ShipContentMcp\Security\IpRules;
 use ShipContentMcp\Security\SignatureCodec;
@@ -71,6 +72,29 @@ $ep = 'http://stage.example.invalid/wp-json/ship-content/mcp';
 $check( '入口：https・別ホストに変えてよい', 'https://www.example.invalid/wp-json/ship-content/mcp' === ConnectionCode::normalize_url( 'https://www.example.invalid/wp-json/ship-content/mcp', $ep ) && $ep === ConnectionCode::normalize_url( $ep, $ep ) );
 $check( '入口：パス違い・ID 入り・別の方式は拒否', '' === ConnectionCode::normalize_url( 'https://www.example.invalid/wp-json/other', $ep ) && '' === ConnectionCode::normalize_url( 'https://u:p@www.example.invalid/wp-json/ship-content/mcp', $ep ) && '' === ConnectionCode::normalize_url( 'ftp://www.example.invalid/wp-json/ship-content/mcp', $ep ) && '' === ConnectionCode::normalize_url( 'https://www.example.invalid/wp-json/ship-content/mcp#x', $ep ) );
 $check( 'Basic 認証の形', ConnectionCode::valid_basic_auth( '' ) && ConnectionCode::valid_basic_auth( 'id:pw' ) && ! ConnectionCode::valid_basic_auth( 'nocolon' ) && ! ConnectionCode::valid_basic_auth( "id:pw\nx" ) );
+
+// Claude デスクトップの拡張機能（.mcpb）。
+$m = DesktopExtension::manifest( 'example', '例のサイト', base64_encode( $pk ), '9.9.9' );
+$check( '拡張機能：必須の項目', '0.3' === $m['manifest_version'] && 'ship-content-example' === $m['name'] && '9.9.9' === $m['version'] && '' !== $m['description'] && 'Ship Inc.' === $m['author']['name'] && 'node' === $m['server']['type'] );
+$check( '拡張機能：接続コードは設定の欄から（秘密は入れない）', '${user_config.connection_code}' === $m['server']['mcp_config']['env']['SHIP_MCP_CODE'] && true === $m['user_config']['connection_code']['sensitive'] && true === $m['user_config']['connection_code']['required'] && false === strpos( (string) json_encode( $m ), 'seed' ) );
+$check( '拡張機能：別のサイトのコードを止める印', base64_encode( $pk ) === $m['server']['mcp_config']['env']['SHIP_MCP_EXPECT_SERVER_KEY'] );
+$check( '拡張機能：入口のファイルと引数が合う', 'server/ship-content-mcp-bridge.mjs' === $m['server']['entry_point'] && array( '${__dirname}/server/ship-content-mcp-bridge.mjs' ) === $m['server']['mcp_config']['args'] );
+if ( class_exists( 'ZipArchive' ) ) {
+	$tmp = tempnam( sys_get_temp_dir(), 'mcpb' );
+	DesktopExtension::build( $tmp, $m, __DIR__ . '/../../bridge/ship-content-mcp-bridge.mjs' );
+	$z = new ZipArchive();
+	$z->open( $tmp );
+	$names = array();
+	for ( $i = 0; $i < $z->numFiles; $i++ ) {
+		$names[] = $z->getNameIndex( $i );
+	}
+	$same = $z->getFromName( 'server/ship-content-mcp-bridge.mjs' ) === file_get_contents( __DIR__ . '/../../bridge/ship-content-mcp-bridge.mjs' );
+	$back = json_decode( (string) $z->getFromName( 'manifest.json' ), true );
+	$z->close();
+	unlink( $tmp );
+	$check( '拡張機能：ZIP の中身は manifest と中継プログラムだけ', array( 'manifest.json', 'server/ship-content-mcp-bridge.mjs' ) === $names && $same && $back === $m );
+}
+$check( '同梱の中継プログラムが bridge/ と同じ', file_get_contents( __DIR__ . '/../../ship-content-mcp/assets/bridge/ship-content-mcp-bridge.mjs' ) === file_get_contents( __DIR__ . '/../../bridge/ship-content-mcp-bridge.mjs' ) );
 
 $fail = 0;
 foreach ( $results as [ $name, $ok ] ) {

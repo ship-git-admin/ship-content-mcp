@@ -386,7 +386,7 @@ final class SettingsPage {
 			echo '<div class="notice notice-error inline"><p>' . esc_html( $error ) . '</p></div>';
 		}
 		if ( is_array( $result ) ) {
-			$message = $result['site'] . " の接続コードです。PM 向けの取説の手順で、Claude に設定してください。\n"
+			$message = $result['site'] . " の接続コードです。PM 向けの取説の手順で、お使いの AI に設定してください（Claude デスクトップのチャットを使う人は、一緒に送る拡張機能のファイルを開いて、このコードを貼ります）。\n"
 				. "このコードは合鍵と同じです。ほかの人に渡したり、共有のチャンネルに貼ったりしないでください。\n"
 				. $result['code'];
 			echo '<div class="notice notice-success inline" style="padding:12px 16px">';
@@ -395,6 +395,9 @@ final class SettingsPage {
 			echo '<textarea id="scm-issued" class="large-text code" rows="5" readonly onclick="this.select()">' . esc_textarea( $message ) . '</textarea>';
 			echo '<p><button type="button" class="button button-primary" onclick="var t=document.getElementById(\'scm-issued\');t.select();if(navigator.clipboard){navigator.clipboard.writeText(t.value);}else{document.execCommand(\'copy\');}this.textContent=\'コピーしました\';">送る文をコピー</button></p>';
 			echo '<p class="description">入口：' . esc_html( $result['url'] ) . '　／　AI への登録の名前：ship-content-' . esc_html( $result['name'] ) . '</p>';
+			if ( DesktopExtension::available() ) {
+				echo '<p>Claude デスクトップのチャットを使う PM には、このサイト用の拡張機能のファイルも一緒に送ります（秘密は入っていません。同じサイトの PM には同じファイルでかまいません）。<br><a class="button" href="' . esc_url( DesktopExtension::download_url( $result['url'] ) ) . '">拡張機能（ship-content-' . esc_html( $result['name'] ) . '.mcpb）をダウンロード</a></p>';
+			}
 			echo '</div>';
 		}
 
@@ -418,7 +421,19 @@ final class SettingsPage {
 		echo '<tr><th><label for="scm-issue-basic">Basic 認証（ある場合だけ）</label></th><td><input id="scm-issue-basic" name="basic_auth" class="regular-text code" autocomplete="off" placeholder="ID:パスワード"><p class="description">公開前などで、サーバーの Basic 認証がかかっているサイトだけ入れます。コードに入れて PM に渡し、サーバーには保存しません。</p></td></tr>';
 		echo '</table>';
 		submit_button( '接続コードを発行する', 'primary', 'submit', true );
-		echo '</form><hr>';
+		echo '</form>';
+		if ( DesktopExtension::available() ) {
+			echo '<h3>Claude デスクトップ用の拡張機能（このサイト用）</h3>';
+			echo '<p class="description">Claude デスクトップのチャットを使う PM に、接続コードと一緒に送るファイルです。秘密は入っていないので、同じサイトの PM には同じファイルでかまいません。名前は入口の URL から決まるので、接続コードと同じ入口を選んでください。</p>';
+			echo '<form method="get" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '"><input type="hidden" name="action" value="' . esc_attr( DesktopExtension::ACTION ) . '">';
+			wp_nonce_field( DesktopExtension::ACTION, '_wpnonce', false );
+			echo '<input name="url" class="large-text code" value="' . esc_attr( $endpoint ) . '" aria-label="入口の URL"> ';
+			submit_button( '拡張機能をダウンロード', 'secondary', 'submit', false );
+			echo '</form>';
+		} else {
+			echo '<p class="description">このサーバーでは、Claude デスクトップ用の拡張機能のファイルを作れません（PHP の ZipArchive がありません）。</p>';
+		}
+		echo '<hr>';
 	}
 
 	// ---- 部品 -------------------------------------------------------------

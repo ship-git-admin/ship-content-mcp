@@ -199,6 +199,9 @@ def main() -> int:
         zip_path = out_dir / f"ship-content-mcp-{version}.zip"
         write_zip(base, files, zip_path)
         bridge_text = BRIDGE.read_text(encoding="utf-8")
+        bundled = base / "assets" / "bridge" / "ship-content-mcp-bridge.mjs"
+        if not bundled.exists() or bundled.read_text(encoding="utf-8") != bridge_text:
+            fail("プラグインに同梱した中継プログラム（assets/bridge/）が bridge/ と違います（cp bridge/ship-content-mcp-bridge.mjs ship-content-mcp/assets/bridge/）")
         bv = re.search(r"export const VERSION = '([^']+)';", bridge_text)
         if not bv or (bv.group(1) != version and not args.rehearsal_version):
             fail(f"中継プログラムの版（{bv.group(1) if bv else '?'}）がプラグインの版（{version}）と一致しません")

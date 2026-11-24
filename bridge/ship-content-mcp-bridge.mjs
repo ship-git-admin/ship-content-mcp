@@ -10,12 +10,15 @@
 //        接続コードはクリップボード（--clipboard）・ファイル（--code-file <ファイル>）・標準入力から読む。
 //        設定を ~/.ship-content-mcp/<名前>.json（600）に保存し、つながるか確かめる。
 //        --register を付けると、Claude Code に「ship-content-<名前>」として登録する（--scope user。--scope で変えられる）。
+//        --print-config を付けると、ほかの AI（Cursor・Gemini CLI など、mcpServers の形の設定を使うもの）に貼る設定を表示する。
+//   Claude デスクトップアプリ（チャット）では、拡張機能 ship-content-mcp.mcpb を入れて、接続コードを貼るだけでよい（Node.js 不要）。
 //   node ship-content-mcp-bridge.mjs keygen --out <秘密鍵のファイル>   … 鍵を作る（公開鍵を表示。秘密が端末から出ない方式）
 //   node ship-content-mcp-bridge.mjs pubkey --key <秘密鍵のファイル>   … 公開鍵をもう一度表示
 //   node ship-content-mcp-bridge.mjs check                             … つながるか試す（ツールの一覧を表示）
 //   node ship-content-mcp-bridge.mjs                                   … 中継（AI エージェントの設定から起動する）
 //
 // 設定（環境変数）：
+//   SHIP_MCP_CODE         接続コードそのもの（Claude デスクトップの拡張機能が、設定の欄から渡す。これ1つで足りる）
 //   SHIP_MCP_CONFIG       setup が作った設定のファイル（これ1つで足りる。下の環境変数があれば、そちらを優先）
 //   SHIP_MCP_URL          MCP の入口（管理画面の「端末の鍵」に表示）
 //   SHIP_MCP_KEY_ID       端末の鍵 ID（管理画面で登録したときに表示）
@@ -39,7 +42,7 @@ import { realpathSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
-export const VERSION = '0.6.0';
+export const VERSION = '0.7.0';
 export const REQ_PREFIX = 'ship-content-mcp-req-v1';
 export const RES_PREFIX = 'ship-content-mcp-res-v1';
 export const CODE_PREFIX = 'shipmcp1.';
@@ -153,42 +156,58 @@ export function readConfigFile(file) {
   return data;
 }
 
+// 空の値と、置き換えられずに残った「${…}」（拡張機能の設定の欄が空のとき）は、設定なしとみなす。
+function envValue(env, k) {
+  const v = env[k];
+  return typeof v === 'string' && v.trim() !== '' && !v.trim().startsWith('${') ? v : '';
+}
+
 export function loadConfig(env = process.env) {
-  const file = env.SHIP_MCP_CONFIG ? readConfigFile(resolve(expandHome(env.SHIP_MCP_CONFIG))) : {};
+  const configPath = envValue(env, 'SHIP_MCP_CONFIG');
+  const file = configPath ? readConfigFile(resolve(expandHome(configPath))) : {};
+  const codeText = envValue(env, 'SHIP_MCP_CODE');
+  const code = codeText ? decodeConnectionCode(codeText) : null;
   const v = {
-    url: env.SHIP_MCP_URL || file.url || '',
-    keyId: env.SHIP_MCP_KEY_ID || file.key_id || '',
-    serverKey: env.SHIP_MCP_SERVER_KEY || file.server_key || '',
-    basic: env.SHIP_MCP_BASIC_AUTH || file.basic_auth || '',
-    uploadDirs: env.SHIP_MCP_UPLOAD_DIRS || (Array.isArray(file.upload_dirs) ? file.upload_dirs.join(delimiter) : ''),
+    url: envValue(env, 'SHIP_MCP_URL') || code?.url || file.url || '',
+    keyId: envValue(env, 'SHIP_MCP_KEY_ID') || code?.keyId || file.key_id || '',
+    serverKey: envValue(env, 'SHIP_MCP_SERVER_KEY') || code?.serverKey || file.server_key || '',
+    basic: envValue(env, 'SHIP_MCP_BASIC_AUTH') || code?.basicAuth || file.basic_auth || '',
+    uploadDirs: envValue(env, 'SHIP_MCP_UPLOAD_DIRS') || (Array.isArray(file.upload_dirs) ? file.upload_dirs.join(delimiter) : ''),
   };
+  const keyFilePath = envValue(env, 'SHIP_MCP_KEY_FILE');
   const missing = [];
   if (!v.url) missing.push('SHIP_MCP_URL');
   if (!v.keyId) missing.push('SHIP_MCP_KEY_ID');
-  if (!env.SHIP_MCP_KEY_FILE && !file.private_key) missing.push('SHIP_MCP_KEY_FILE');
+  if (!keyFilePath && !code && !file.private_key) missing.push('SHIP_MCP_KEY_FILE');
   if (!v.serverKey) missing.push('SHIP_MCP_SERVER_KEY');
-  if (missing.length) throw new Error(`設定が足りません：${missing.join(', ')}（接続コードで設定したときは、SHIP_MCP_CONFIG のファイルを確かめてください）`);
+  if (missing.length) throw new Error(`設定が足りません：${missing.join(', ')}（接続コードを使うときは、拡張機能の「接続コード」の欄か SHIP_MCP_CODE・SHIP_MCP_CONFIG を確かめてください）`);
   const url = new URL(v.url);
   if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error('SHIP_MCP_URL は http:// か https:// で始めてください');
   if (url.username || url.password) throw new Error('SHIP_MCP_URL に ID・パスワードを入れないでください（SHIP_MCP_BASIC_AUTH を使う）');
   if (!/^k[0-9a-f]{16}$/.test(v.keyId)) throw new Error('SHIP_MCP_KEY_ID の形が違います');
   let privateKey;
-  if (env.SHIP_MCP_KEY_FILE) {
-    const keyFile = resolve(expandHome(env.SHIP_MCP_KEY_FILE));
+  if (keyFilePath) {
+    const keyFile = resolve(expandHome(keyFilePath));
     warnIfOpen(keyFile, '秘密鍵のファイル');
     privateKey = createPrivateKey(readFileSync(keyFile));
+  } else if (code) {
+    privateKey = privateKeyFromSeed(code.seed);
   } else {
     privateKey = createPrivateKey(String(file.private_key));
   }
   if (privateKey.asymmetricKeyType !== 'ed25519') throw new Error('秘密鍵が Ed25519 ではありません（keygen で作った鍵か、接続コードを使ってください）');
   const serverRaw = Buffer.from(String(v.serverKey).trim(), 'base64');
   const serverKey = publicKeyFromRaw(serverRaw);
+  const expect = envValue(env, 'SHIP_MCP_EXPECT_SERVER_KEY');
+  if (expect && Buffer.from(expect.trim(), 'base64').toString('base64') !== serverRaw.toString('base64')) {
+    throw new Error('この拡張機能は、別のサイト用です（このサイトの接続コードを貼ってください。サイトごとに拡張機能が分かれています）');
+  }
   let basic = '';
   if (v.basic) {
     if (!v.basic.includes(':')) throw new Error('SHIP_MCP_BASIC_AUTH は「ID:パスワード」の形にしてください');
     basic = 'Basic ' + Buffer.from(v.basic, 'utf8').toString('base64');
   }
-  const timeoutMs = Math.max(5000, Math.min(600000, Number(env.SHIP_MCP_TIMEOUT_MS || 60000) || 60000));
+  const timeoutMs = Math.max(5000, Math.min(600000, Number(envValue(env, 'SHIP_MCP_TIMEOUT_MS') || 60000) || 60000));
   if (url.protocol === 'http:') {
     log('注意：HTTP で接続します。パスワードは送りませんが、中身（文章・写真）は暗号化されません。公開予定の内容だけを扱ってください。');
   }
@@ -538,6 +557,10 @@ async function setup(args) {
   if (!['user', 'project', 'local'].includes(scope)) throw new Error('--scope は user・project・local のどれかにしてください');
   const addArgs = ['mcp', 'add', server, '--scope', scope, '-e', `SHIP_MCP_CONFIG=${file}`, '--', process.execPath, fileURLToPath(import.meta.url)];
   const manual = `claude ${addArgs.map(shellQuote).join(' ')}`;
+  if (args.includes('--print-config')) {
+    out('ほかの AI（mcpServers の形の設定を使うもの）に貼る設定：');
+    out(JSON.stringify({ mcpServers: { [server]: { command: process.execPath, args: [fileURLToPath(import.meta.url)], env: { SHIP_MCP_CONFIG: file } } } }, null, 2));
+  }
   if (args.includes('--register')) {
     const claude = findClaude();
     if (!claude) {
@@ -553,7 +576,7 @@ async function setup(args) {
     }
     out(`Claude Code に「${server}」として登録しました（${scope}）。`);
     out(`次から：Claude で新しいセッションを開き、「${code.site || 'このサイト'}で使える投稿タイプを教えて」と聞いてください。`);
-  } else {
+  } else if (!args.includes('--print-config')) {
     out('Claude Code に登録するコマンド：');
     out(manual);
   }

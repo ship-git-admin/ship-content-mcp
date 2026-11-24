@@ -3,7 +3,7 @@ Contributors: shipinc
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.6.0
+Stable tag: 0.7.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -17,6 +17,9 @@ WordPress 側では AI を呼びません。公開・予約・削除・ACF の�
 読み取り（投稿タイプ・制作方針・入力欄の構造・記事）、下書きの検証・作成・修正、写真の分割転送のツールがあります。
 
 == Changelog ==
+
+= 0.7.0 =
+* Claude デスクトップアプリ（チャット）用の拡張機能（.mcpb）を、管理画面からサイトごとにダウンロードできる。PM は開いて接続コードを貼るだけ（Node.js 不要）。ほかの AI 向けの設定の表示。
 
 = 0.6.0 =
 * 接続コード：管理者が管理画面（または WP-CLI）で発行し、PM はコピーして Claude に一文を貼るだけで設定できる。中継プログラムに setup を追加。

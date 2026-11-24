@@ -38,6 +38,7 @@ final class Plugin {
 
 		if ( is_admin() ) {
 			SettingsPage::hooks();
+			\ShipContentMcp\Admin\DesktopExtension::hooks();
 		}
 
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
