@@ -15,7 +15,7 @@
 - WordPress 6.9 以上（Abilities API）、PHP 8.1 以上（sodium）
 - 公式 MCP Adapter（WordPress.org のプラグイン `mcp-adapter`）
 - ACF（入力欄の構造を読むとき）
-- PM の端末：Node.js 18 以上（中継プログラム）
+- PM の端末：Node.js 18 以上（中継プログラム）。パソコンに詳しくない PM は、AI に貼る文で Node.js から登録まで AI に任せられる（[docs/PM_GUIDE.md](docs/PM_GUIDE.md) の 0.）
 
 ## 入れ方（管理者）
 
