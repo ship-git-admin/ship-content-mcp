@@ -5,7 +5,7 @@
  * - 表：端末の鍵・使い捨て番号（リプレイ防止）・操作の記録・二重送信の防止（idempotency）・写真の分割転送・OAuth
  * - ロール：Content MCP Operator（read と専用の権限だけ）
  * - サイトの鍵（応答の署名用）
- * - 設定・制作方針は、すでにあれば変えない（更新で消さない）。制作方針がまだない・空のサイトには初期値を入れる
+ * - 設定・制作方針は、すでにあれば変えない（更新で消さない）
  *
  * @package ShipContentMcp
  */
@@ -32,7 +32,6 @@ final class Installer {
 		self::create_tables();
 		self::ensure_role();
 		add_option( Settings::OPTION, Settings::defaults(), '', false );
-		\ShipContentMcp\Policy\Policies::seed_defaults(); // 方針がまだないサイトだけ、初期値を入れる。
 		if ( function_exists( 'sodium_crypto_sign_keypair' ) ) {
 			SiteKey::ensure();
 		}

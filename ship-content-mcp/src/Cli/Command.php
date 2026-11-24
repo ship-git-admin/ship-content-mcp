@@ -591,7 +591,6 @@ final class Command {
 		);
 
 		// --- 投稿タイプ・方針・ACF ---
-		$this->check( 'T39 制作方針の初期値がある（新しいサイト・空のサイトに入る）', '' !== trim( \ShipContentMcp\Policy\DefaultPolicies::SITE ) && '' !== trim( \ShipContentMcp\Policy\DefaultPolicies::TYPES['works'] ?? '' ) );
 		$this->check( 'T40 固定ページ・メディアは候補にならない', ! isset( PostTypes::candidates()['page'] ) && ! isset( PostTypes::candidates()['attachment'] ) );
 		$allowed = PostTypes::allowed();
 		$this->check( 'T41 使える投稿タイプがある', array() !== $allowed, implode( ',', $allowed ) );
