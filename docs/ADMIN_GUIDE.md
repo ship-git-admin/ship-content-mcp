@@ -18,7 +18,39 @@
 - ACF の入力欄を変えたら、「診断」の「確かめた構造」が赤になる。AI で試し、表示を確かめてから、基本設定の「いまの構造を確かめ直した」にチェックを入れて保存する。
 - 固定ページ・メディア・内部の投稿タイプは、設定にかかわらず使えない。
 
-## 3. トークンを発行して PM に渡す
+## 3. 招待コードを発行して PM に渡す（ブラウザで許可する接続・おすすめ）
+
+1. 「設定 → Ship Content MCP → 接続」の「招待コードを発行する」で、ユーザー（ふつうは MCP 用のユーザー）・PM の名前・入口の URL（https があれば https）を入れて発行する。
+2. 出てきた2つを PM に送る：**① AI に貼る文**（秘密なし。PM は自分の AI に貼る）と、**② 招待コード**（PM はブラウザの「接続の許可」の画面に入れる。AI には貼らない）。招待コードはこの1回だけ表示される。
+3. PM の AI がブラウザを開き、PM が招待コードを入れて「許可する」を押すと、一覧に「ブラウザで許可した接続」（AI の名前・期限）として出る。止めるときは「止める」。
+
+- 招待コードは1回だけ・初期 7日。許可した接続は初期 90日で切れる（基本設定で変えられる。切れたら新しい招待コードで許可し直す）。PM 1人のパソコン1台ごとに1つ発行する。
+- 戻り先が https の AI（Claude の Web 版・デスクトップのコネクタなど、AI の会社のサーバーからつなぐもの）は、基本設定の「Web 版の AI からの接続も許す」をオンにしたときだけ。
+- WP-CLI でも発行できる：`wp ship-content-mcp keys invite --for-user=<ID か new> --label='PM 山田' [--entry-url=https://…/wp-json/ship-content/mcp]`。
+- WordPress がドメインの直下にあること（`/.well-known/` をこのプラグインが返すため）。
+
+### サーバーの Basic 認証があるサイト（公開前）
+
+AI は Basic 認証を付けて OAuth の手続きをできないので、AI が自動で呼ぶ道だけを Basic 認証の例外にする。サイトのページと「接続の許可」の画面は Basic 認証のまま（PM のブラウザが ID とパスワードを聞く）。例外にした道も、トークンがなければ何もできない。`.htaccess` の Basic 認証の部分を次の形にする（変更前の控えを取る）：
+
+```apache
+SetEnvIf Request_URI "^/wp-json/ship-content/(mcp|oauth/(register|token|revoke)|upload/[a-f0-9]{48})/?$" SHIP_MCP_OPEN
+SetEnvIf Request_URI "^/\.well-known/(oauth-protected-resource|oauth-authorization-server|openid-configuration)" SHIP_MCP_OPEN
+AuthUserFile （そのまま）
+AuthName （そのまま）
+AuthType Basic
+<RequireAny>
+Require env SHIP_MCP_OPEN
+Require env REDIRECT_SHIP_MCP_OPEN
+Require valid-user
+</RequireAny>
+```
+
+- `REDIRECT_SHIP_MCP_OPEN` は、WordPress の書き換え（index.php）の後でも通すために要る。
+- サーバーの管理画面で Basic 認証を設定し直すと、この形が元に戻ることがある（戻ると、ブラウザで許可する接続だけが使えなくなる）。
+- デモサイトに入れておけば、コピーしたサイトにも引き継がれる。
+
+## 3-2. トークンを発行して PM に渡す（招待コードが使えないとき）
 
 1. 「設定 → Ship Content MCP → 接続」の「トークンを発行する」で、ユーザー（ふつうは「MCP 用のユーザーを新しく作る」）・名前・入口の URL・Basic 認証（公開前のサイトだけ）を入れて発行する。
 2. 出てきた「AI に貼る文」を、PM に DM で送る（PM は自分の AI に貼るだけ。AI が自分で MCP の設定に登録する）。Claude デスクトップアプリ（チャット）を使う PM には、「拡張機能をダウンロード」のファイルとトークンを送る（ファイルにトークンは入っていない）。AI に頼まず自分で設定したい人向けのコマンドは「自分で設定するとき」にある。トークンはこの1回だけ表示される。
@@ -31,9 +63,9 @@
 
 ### 公開の前に片付ける
 
-1. 「接続」タブの「すべて止めて、MCP を止める」を押す（または `wp ship-content-mcp prelaunch --yes`）。発行したトークン・鍵がすべて止まり、MCP の入口がなくなる。
+1. 「接続」タブの「すべて止めて、MCP を止める」を押す（または `wp ship-content-mcp prelaunch --yes`）。発行した招待コード・接続・トークン・鍵がすべて止まり、MCP の入口がなくなる。
 2. 「プラグイン」で「Ship Content MCP」と「MCP Adapter」を無効にして削除する（または `wp plugin delete ship-content-mcp mcp-adapter --deactivate`）。このプラグインの表・設定・制作方針・記録・ロールも消える（`uninstall.php`）。作った下書き・写真と、MCP 用のユーザーは残る。
-3. REST を止めるコード（Snippet など）に足した `ship-content/` の例外も、要らなければ外す。
+3. REST を止めるコード（Snippet など）に足した `ship-content/` の例外も、要らなければ外す。Basic 認証の例外（上の `SHIP_MCP_OPEN`）は、公開で Basic 認証ごと外すなら一緒に消える。
 
 ### ほかのつなぎ方
 

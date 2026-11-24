@@ -8,6 +8,8 @@
  * - reject_privileged：一般の編集権限などを持つユーザーを MCP で使わせない（初期は拒否）。
  * - ip_allowlist：接続元の IP/CIDR（空なら制限しない）。REMOTE_ADDR だけを見る。
  * - auth_token：管理画面で発行したトークンでの接続（いちばん簡単。初期は使う）。token_http：トークンを HTTP でも受け付ける（公開前の確認用 URL のため。初期は受け付ける。公開時は MCP ごと外す）。
+ * - auth_oauth：ブラウザで許可する接続（OAuth。招待コード）。oauth_invite_days：招待コードの期限（日、初期 7）。oauth_grant_days：許可の期限（日、初期 90）。
+ *   oauth_remote_clients：戻り先が https の AI（Claude の Web 版など、AI の会社のサーバーからつなぐもの）も許す（初期は許さない）。
  * - auth_signature / auth_app_password：使ってよい認証の方法。
  * - media_max_mb：写真1枚の上限（MB、1〜100）。strip_metadata：写真の位置情報などのメタデータを消す（初期は消す）。
  *
@@ -49,6 +51,10 @@ final class Settings {
 			),
 			'reject_privileged'      => true,
 			'ip_allowlist'           => array(),
+			'auth_oauth'             => true,
+			'oauth_invite_days'      => 7,
+			'oauth_grant_days'       => 90,
+			'oauth_remote_clients'   => false,
 			'auth_token'             => true,
 			'token_http'             => true,
 			'auth_signature'         => true,
@@ -94,9 +100,11 @@ final class Settings {
 	public static function sanitize( array $in, bool $use_default_types ): array {
 		$d   = self::defaults();
 		$out = $d;
-		foreach ( array( 'enabled', 'disable_default_server', 'reject_privileged', 'auth_token', 'token_http', 'auth_signature', 'auth_app_password', 'strip_metadata' ) as $k ) {
+		foreach ( array( 'enabled', 'disable_default_server', 'reject_privileged', 'auth_oauth', 'oauth_remote_clients', 'auth_token', 'token_http', 'auth_signature', 'auth_app_password', 'strip_metadata' ) as $k ) {
 			$out[ $k ] = array_key_exists( $k, $in ) ? self::bool( $in[ $k ] ) : $d[ $k ];
 		}
+		$out['oauth_invite_days'] = isset( $in['oauth_invite_days'] ) && is_numeric( $in['oauth_invite_days'] ) ? max( 1, min( 90, (int) $in['oauth_invite_days'] ) ) : $d['oauth_invite_days'];
+		$out['oauth_grant_days']  = isset( $in['oauth_grant_days'] ) && is_numeric( $in['oauth_grant_days'] ) ? max( 1, min( 365, (int) $in['oauth_grant_days'] ) ) : $d['oauth_grant_days'];
 		$out['media_max_mb'] = isset( $in['media_max_mb'] ) && is_numeric( $in['media_max_mb'] ) ? max( 1, min( 100, (int) $in['media_max_mb'] ) ) : $d['media_max_mb'];
 		if ( array_key_exists( 'post_types', $in ) && is_array( $in['post_types'] ) ) {
 			$out['post_types'] = array();

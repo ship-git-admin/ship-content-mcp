@@ -9,6 +9,7 @@ use ShipContentMcp\Admin\DesktopExtension;
 use ShipContentMcp\Security\ConnectionCode;
 use ShipContentMcp\Security\DeviceKeys;
 use ShipContentMcp\Security\IpRules;
+use ShipContentMcp\Security\OAuth;
 use ShipContentMcp\Security\SignatureCodec;
 
 $results = array();
@@ -109,6 +110,35 @@ $cfg2 = ConnectionCode::client_configs( 'ship-x', 'https://x.invalid/wp-json/shi
 $check( 'AI に貼る文：名前・URL・ヘッダー・登録のしかたが入る', str_contains( $cfg['prompt'], '名前：ship-example' ) && str_contains( $cfg['prompt'], 'URL：http://stage.example.invalid/wp-json/ship-content/mcp' ) && str_contains( $cfg['prompt'], 'X-Ship-MCP-Token: ' . $tok ) && str_contains( $cfg['prompt'], 'Authorization: Basic ' . base64_encode( "gate:p'w" ) ) && str_contains( $cfg['prompt'], 'claude mcp add --transport http' ) && str_contains( $cfg['prompt'], 'config.toml' ) );
 $check( 'AI の設定：Basic 認証がなければ入れない', ! str_contains( $cfg2['claude_code'], 'Authorization' ) && ! str_contains( $cfg2['codex'], 'Authorization' ) && ! str_contains( $cfg2['prompt'], 'Authorization' ) );
 $check( '同梱の中継プログラムが bridge/ と同じ', file_get_contents( __DIR__ . '/../../ship-content-mcp/assets/bridge/ship-content-mcp-bridge.mjs' ) === file_get_contents( __DIR__ . '/../../bridge/ship-content-mcp-bridge.mjs' ) );
+
+// OAuth（ブラウザで許可する接続）。
+$inv = OAuth::new_invite_code();
+$check( 'OAuth：招待コードの形（4文字ずつ5組・見間違えやすい文字なし）', 1 === preg_match( '/^[A-HJ-NP-Z2-9]{4}(-[A-HJ-NP-Z2-9]{4}){4}$/', $inv ) );
+$check( 'OAuth：招待コードは小文字・空白・全角のハイフンでも読める', str_replace( '-', '', $inv ) === OAuth::normalize_invite( ' ' . strtolower( str_replace( '-', '－', $inv ) ) . "\n" ) && '' === OAuth::normalize_invite( 'ABCD-EFGH' ) && '' === OAuth::normalize_invite( str_repeat( 'O', 20 ) ) );
+$check( 'OAuth：招待コードのハッシュ（inv: 付き・64文字以内）', str_starts_with( OAuth::invite_hash( 'A' ), 'inv:' ) && strlen( OAuth::invite_hash( str_repeat( 'A', 20 ) ) ) <= 64 && OAuth::invite_hash( 'A' ) !== OAuth::invite_hash( 'B' ) );
+$check(
+	'OAuth：行の種類',
+	'invite' === OAuth::kind( array( 'public_key' => 'inv:x' ) ) && 'oauth' === OAuth::kind( array( 'public_key' => 'oau:x' ) ) && 'token' === OAuth::kind( array( 'public_key' => 'tok:x' ) ) && 'key' === OAuth::kind( array( 'public_key' => base64_encode( $pk ) ) )
+);
+$check( 'OAuth：期限', OAuth::expired( array( 'expires_at' => '2000-01-01 00:00:00' ) ) && ! OAuth::expired( array( 'expires_at' => '2999-01-01 00:00:00' ) ) && ! OAuth::expired( array( 'expires_at' => null ) ) );
+$ver = str_repeat( 'a', 43 );
+$chl = rtrim( strtr( base64_encode( hash( 'sha256', $ver, true ) ), '+/', '-_' ), '=' );
+$check( 'OAuth：PKCE（S256）', OAuth::pkce_ok( $ver, $chl ) && ! OAuth::pkce_ok( $ver . 'b', $chl ) && ! OAuth::pkce_ok( 'short', $chl ) && ! OAuth::pkce_ok( $ver, '' ) );
+$check(
+	'OAuth：戻り先（このパソコンの中・アプリ専用の形だけ。https は設定で許したときだけ）',
+	OAuth::valid_redirect( 'http://127.0.0.1:53682/callback', false ) && OAuth::valid_redirect( 'http://localhost/callback', false ) && OAuth::valid_redirect( 'http://[::1]:8000/cb', false )
+	&& OAuth::valid_redirect( 'cursor://anysphere.cursor-mcp/oauth/callback', false ) && OAuth::valid_redirect( 'com.example.app:/oauth', false )
+	&& ! OAuth::valid_redirect( 'https://claude.ai/api/mcp/auth_callback', false ) && OAuth::valid_redirect( 'https://claude.ai/api/mcp/auth_callback', true )
+	&& ! OAuth::valid_redirect( 'http://evil.example/cb', true ) && ! OAuth::valid_redirect( 'http://127.0.0.1.evil.example/cb', false ) && ! OAuth::valid_redirect( 'http://user@127.0.0.1/cb', false )
+	&& ! OAuth::valid_redirect( 'javascript:alert(1)', true ) && ! OAuth::valid_redirect( 'data:text/html,x', true ) && ! OAuth::valid_redirect( 'file:///etc/passwd', true ) && ! OAuth::valid_redirect( 'http://127.0.0.1/cb#x', false ) && ! OAuth::valid_redirect( '', false )
+);
+$check(
+	'OAuth：戻り先の照合（ループバックはポートを問わない・パスは同じ）',
+	OAuth::redirect_matches( 'http://127.0.0.1:61000/callback', array( 'http://127.0.0.1:53682/callback' ) ) && ! OAuth::redirect_matches( 'http://127.0.0.1:61000/other', array( 'http://127.0.0.1:53682/callback' ) )
+	&& ! OAuth::redirect_matches( 'http://localhost:61000/callback', array( 'http://127.0.0.1:53682/callback' ) ) && OAuth::redirect_matches( 'cursor://a/cb', array( 'cursor://a/cb' ) ) && ! OAuth::redirect_matches( 'cursor://a/cb2', array( 'cursor://a/cb' ) )
+);
+$pr = OAuth::pm_prompt( 'ship-example', 'https://x.invalid/wp-json/ship-content/mcp' );
+$check( 'OAuth：AI に貼る文（名前・URL・OAuth・登録のしかた。秘密は入らない）', str_contains( $pr, '名前：ship-example' ) && str_contains( $pr, 'URL：https://x.invalid/wp-json/ship-content/mcp' ) && str_contains( $pr, 'OAuth' ) && str_contains( $pr, 'claude mcp login ship-example' ) && str_contains( $pr, 'codex mcp login ship-example' ) && ! str_contains( $pr, 'smcp' ) && ! str_contains( $pr, 'Authorization' ) );
 
 $fail = 0;
 foreach ( $results as [ $name, $ok ] ) {

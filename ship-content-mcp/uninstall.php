@@ -2,7 +2,7 @@
 /**
  * プラグインを削除したときの後片付け（公開時の片付けで使う）。
  *
- * 消すもの：このプラグインの表（トークン・鍵・使い捨て番号・記録・二重送信の防止・写真の転送）、設定・制作方針・サイトの鍵などの
+ * 消すもの：このプラグインの表（トークン・鍵・招待コード・OAuth の接続と AI の登録・使い捨て番号・記録・二重送信の防止・写真の転送）、設定・制作方針・サイトの鍵などの
  * オプション、アップロード用 URL の札（transient）、ロール「Content MCP Operator」。
  * 残すもの：作った下書き・写真（コンテンツなので）、MCP 用のユーザー（下書きの作成者のため。ロールはなくなるので何もできない）。
  *
@@ -15,7 +15,7 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
 
 global $wpdb;
 
-foreach ( array( 'keys', 'nonces', 'log', 'idem', 'uploads', 'chunks' ) as $ship_content_mcp_table ) {
+foreach ( array( 'keys', 'nonces', 'log', 'idem', 'uploads', 'chunks', 'oauth_clients', 'oauth_tokens' ) as $ship_content_mcp_table ) {
 	$wpdb->query( 'DROP TABLE IF EXISTS `' . esc_sql( $wpdb->prefix . 'ship_content_mcp_' . $ship_content_mcp_table ) . '`' ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery.SchemaChange
 }
 

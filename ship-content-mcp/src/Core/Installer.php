@@ -2,7 +2,7 @@
 /**
  * 有効化・版上げ（何度実行しても同じ結果になるようにする）。
  *
- * - 表：端末の鍵・使い捨て番号（リプレイ防止）・操作の記録・二重送信の防止（idempotency）・写真の分割転送
+ * - 表：端末の鍵・使い捨て番号（リプレイ防止）・操作の記録・二重送信の防止（idempotency）・写真の分割転送・OAuth
  * - ロール：Content MCP Operator（read と専用の権限だけ）
  * - サイトの鍵（応答の署名用）
  * - 設定・制作方針は、すでにあれば変えない（更新で消さない）
@@ -64,6 +64,8 @@ final class Installer {
   last_used_at datetime NULL DEFAULT NULL,
   revoked_at datetime NULL DEFAULT NULL,
   revoked_by bigint(20) unsigned NOT NULL DEFAULT 0,
+  expires_at datetime NULL DEFAULT NULL,
+  client varchar(100) NOT NULL DEFAULT '',
   PRIMARY KEY  (id),
   UNIQUE KEY key_id (key_id),
   UNIQUE KEY public_key (public_key),
@@ -102,6 +104,42 @@ final class Installer {
 		);
 		self::create_idem_table( $idem, $charset );
 		self::create_upload_tables( $charset );
+		self::create_oauth_tables( $charset );
+	}
+
+	/**
+	 * OAuth：登録した AI（クライアント）と、認可コード・アクセストークン・更新トークン（SHA-256 だけ）。
+	 */
+	private static function create_oauth_tables( string $charset ): void {
+		$clients = self::table( 'oauth_clients' );
+		$tokens  = self::table( 'oauth_tokens' );
+		dbDelta(
+			"CREATE TABLE {$clients} (
+  client_id varchar(40) NOT NULL,
+  client_name varchar(100) NOT NULL DEFAULT '',
+  redirect_uris text NOT NULL,
+  created_at int(10) unsigned NOT NULL,
+  ip varchar(45) NOT NULL DEFAULT '',
+  used_at int(10) unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (client_id),
+  KEY created_at (created_at)
+) {$charset};"
+		);
+		dbDelta(
+			"CREATE TABLE {$tokens} (
+  token_hash char(64) NOT NULL,
+  kind varchar(10) NOT NULL,
+  key_id varchar(40) NOT NULL,
+  client_id varchar(40) NOT NULL,
+  data text NULL,
+  created_at int(10) unsigned NOT NULL,
+  expires_at int(10) unsigned NOT NULL,
+  used_at int(10) unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (token_hash),
+  KEY key_id (key_id),
+  KEY expires_at (expires_at)
+) {$charset};"
+		);
 	}
 
 	/**

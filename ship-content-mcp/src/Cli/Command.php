@@ -1,6 +1,6 @@
 <?php
 /**
- * WP-CLI：wp ship-content-mcp status|selftest|enable|disable|post-type <name> <status>|keys [list|token|issue|add|revoke]|prelaunch [--yes]|cleanup-tests [--yes]
+ * WP-CLI：wp ship-content-mcp status|selftest|enable|disable|post-type <name> <status>|keys [list|invite|token|issue|add|revoke]|prelaunch [--yes]|cleanup-tests [--yes]
  *
  * selftest は読み取りが中心。書くのは、使い捨て番号の表への試験の行だけ（最後に消す）。ユーザー・投稿・鍵は作らない。
  *
@@ -249,19 +249,22 @@ final class Command {
 	 * ## OPTIONS
 	 *
 	 * [<action>]
-	 * : list / token / issue / add / revoke（token はトークンの発行、issue は接続コードの発行。どちらもこの1回だけ表示する）
+	 * : list / invite / token / issue / add / revoke（invite は招待コード（ブラウザで許可する接続）、token はトークン、issue は接続コードの発行。どれもこの1回だけ表示する）
 	 * ---
 	 * default: list
 	 * ---
 	 *
 	 * [--for-user=<id>]
-	 * : token・issue・add のとき：使うユーザーの ID（Content MCP Operator のユーザー。token では new で MCP 用のユーザーを作る）
+	 * : invite・token・issue・add のとき：使うユーザーの ID（Content MCP Operator のユーザー。invite・token では new で MCP 用のユーザーを作る）
 	 *
 	 * [--label=<label>]
-	 * : issue・add のとき：端末の名前
+	 * : invite・token・issue・add のとき：PM・端末の名前
+	 *
+	 * [--days=<n>]
+	 * : invite のとき：招待コードの期限（日。既定は設定の値、初期 7）
 	 *
 	 * [--entry-url=<url>]
-	 * : token・issue のとき：コマンドに入れる入口（既定はこのサイトの入口。https の入口に変えるときに使う。パスは変えない。WP-CLI の --url とは別）
+	 * : invite・token・issue のとき：コマンドに入れる入口（既定はこのサイトの入口。https の入口に変えるときに使う。パスは変えない。WP-CLI の --url とは別）
 	 *
 	 * [--basic-auth-stdin]
 	 * : token・issue のとき：サーバーの Basic 認証（ID:パスワード）を標準入力から読んで、コマンド・コードに入れる（コマンドの履歴に残さないため。サーバーには保存しない）
@@ -272,11 +275,35 @@ final class Command {
 	 * [--key-id=<id>]
 	 * : revoke のとき：止める鍵の ID
 	 *
+	 * [--format=<format>]
+	 * : list のとき：table / json / csv / yaml
+	 *
 	 * @param list<string>          $args
 	 * @param array<string,string>  $assoc
 	 */
 	public function keys( array $args, array $assoc ): void {
 		$action = $args[0] ?? 'list';
+		if ( 'invite' === $action ) {
+			$user_id = $this->cli_user( (string) ( $assoc['for-user'] ?? '' ) );
+			$endpoint = \ShipContentMcp\MCP\Server::endpoint();
+			$url      = ConnectionCode::normalize_url( '' === (string) ( $assoc['entry-url'] ?? '' ) ? $endpoint : (string) $assoc['entry-url'], $endpoint );
+			if ( '' === $url ) {
+				\WP_CLI::error( '入口の URL が違います（パスは ' . (string) wp_parse_url( $endpoint, PHP_URL_PATH ) . ' のままにしてください）' );
+			}
+			try {
+				$inv = \ShipContentMcp\Security\OAuth::issue_invite( $user_id, (string) ( $assoc['label'] ?? '' ), get_current_user_id(), isset( $assoc['days'] ) ? (int) $assoc['days'] : null );
+			} catch ( \InvalidArgumentException $e ) {
+				\WP_CLI::error( $e->getMessage() );
+			}
+			AuditLog::write( 'admin', 'ok', '', 'invite issued via cli for user #' . $user_id, array( 'key_id' => $inv['key_id'], 'auth' => 'cli' ) );
+			\WP_CLI::log( 'SHIP_MCP_KEY_ID=' . $inv['key_id'] );
+			\WP_CLI::log( '招待コード（この1回だけ表示。PM はブラウザの「接続の許可」の画面に入れる。AI には貼らない。' . $inv['expires_at'] . ' UTC まで・1回だけ）：' );
+			\WP_CLI::line( $inv['code'] );
+			\WP_CLI::log( '--- AI に貼る文（秘密は入っていない） ---' );
+			\WP_CLI::log( \ShipContentMcp\Security\OAuth::pm_prompt( 'ship-' . ConnectionCode::default_name( $url ), $url ) );
+			\WP_CLI::success( '発行しました' );
+			return;
+		}
 		if ( 'token' === $action ) {
 			$who = (string) ( $assoc['for-user'] ?? '' );
 			if ( 'new' === $who ) {
@@ -378,7 +405,7 @@ final class Command {
 			return;
 		}
 		if ( 'list' !== $action ) {
-			\WP_CLI::error( 'list / token / issue / add / revoke のどれかを指定してください' );
+			\WP_CLI::error( 'list / invite / token / issue / add / revoke のどれかを指定してください' );
 		}
 		$rows = array();
 		foreach ( DeviceKeys::all() as $r ) {
@@ -387,14 +414,45 @@ final class Command {
 				'key_id'      => $r['key_id'],
 				'user_id'     => $r['user_id'],
 				'label'       => $r['label'],
-				'type'        => DeviceKeys::is_token( $r ) ? 'token' : 'key',
-				'fingerprint' => DeviceKeys::is_token( $r ) ? '-' : ( null === $raw ? '?' : SignatureCodec::fingerprint( $raw ) ),
+				'type'        => \ShipContentMcp\Security\OAuth::kind( $r ),
+				'fingerprint' => 'key' !== \ShipContentMcp\Security\OAuth::kind( $r ) ? '-' : ( null === $raw ? '?' : SignatureCodec::fingerprint( $raw ) ),
+				'client'      => (string) ( $r['client'] ?? '' ),
+				'expires_at'  => (string) ( $r['expires_at'] ?? '' ),
 				'created_at'  => $r['created_at'],
 				'last_used'   => $r['last_used_at'] ?? '',
 				'revoked_at'  => $r['revoked_at'] ?? '',
 			);
 		}
-		\WP_CLI\Utils\format_items( 'table', $rows, array( 'key_id', 'user_id', 'label', 'fingerprint', 'created_at', 'last_used', 'revoked_at' ) );
+		\WP_CLI\Utils\format_items( in_array( (string) ( $assoc['format'] ?? 'table' ), array( 'table', 'json', 'csv', 'yaml' ), true ) ? (string) ( $assoc['format'] ?? 'table' ) : 'table', $rows, array( 'key_id', 'type', 'user_id', 'label', 'client', 'fingerprint', 'created_at', 'last_used', 'expires_at', 'revoked_at' ) );
+	}
+
+	/** --for-user=<ID|new> のユーザー（new なら MCP 用のユーザーを作る）。使えなければ止める。 */
+	private function cli_user( string $who ): int {
+		if ( 'new' === $who ) {
+			$login = 'mcp-operator';
+			for ( $i = 2; username_exists( $login ) && $i < 100; $i++ ) {
+				$login = 'mcp-operator-' . $i;
+			}
+			$created = wp_insert_user(
+				array(
+					'user_login'   => $login,
+					'user_pass'    => wp_generate_password( 40, true, true ),
+					'display_name' => 'MCP 用ユーザー',
+					'role'         => Consts::ROLE,
+				)
+			);
+			if ( is_wp_error( $created ) ) {
+				\WP_CLI::error( 'MCP 用のユーザーを作れませんでした：' . $created->get_error_message() );
+			}
+			AuditLog::write( 'admin', 'ok', '', 'operator user created via cli: ' . $login, array( 'auth' => 'cli' ) );
+			\WP_CLI::log( 'MCP 用のユーザーを作りました：' . $login . '（ID ' . (int) $created . '）' );
+			return (int) $created;
+		}
+		$why = AccessGate::user_problem( (int) $who );
+		if ( '' !== $why ) {
+			\WP_CLI::error( 'このユーザーは MCP を使えません：' . $why );
+		}
+		return (int) $who;
 	}
 
 	/**
@@ -516,6 +574,21 @@ final class Command {
 		$p36 = DeviceKeys::parse_token( $t36 );
 		$this->check( 'T36 トークン：形を読めて、ハッシュが64文字以内で、違う秘密では合わない', null !== $p36 && strlen( DeviceKeys::token_hash( $p36['secret'] ) ) <= 64 && ! hash_equals( DeviceKeys::token_hash( $p36['secret'] ), DeviceKeys::token_hash( $p36['secret'] . 'x' ) ) && 'bad_format' === DeviceKeys::verify_token( 'smcp_bad' ) && 'unknown_key' === DeviceKeys::verify_token( $t36 ) );
 		$this->check( 'T37 写真のアップロード用 URL の入口がある', isset( rest_get_server()->get_routes()['/' . \ShipContentMcp\Core\Consts::NS . '/upload/(?P<ticket>[a-f0-9]{48})'] ) );
+		$routes38 = rest_get_server()->get_routes();
+		$inv38    = \ShipContentMcp\Security\OAuth::new_invite_code();
+		$ver38    = rtrim( strtr( base64_encode( random_bytes( 32 ) ), '+/', '-_' ), '=' );
+		$ch38     = rtrim( strtr( base64_encode( hash( 'sha256', $ver38, true ) ), '+/', '-_' ), '=' );
+		$as38     = \ShipContentMcp\Security\OAuthServer::authorization_server_metadata();
+		$this->check(
+			'T38 OAuth：入口があり、招待コード・PKCE・戻り先の判定が正しい',
+			isset( $routes38['/' . \ShipContentMcp\Core\Consts::NS . '/oauth/token'], $routes38['/' . \ShipContentMcp\Core\Consts::NS . '/oauth/authorize'], $routes38['/' . \ShipContentMcp\Core\Consts::NS . '/oauth/register'] )
+			&& '' !== \ShipContentMcp\Security\OAuth::normalize_invite( strtolower( $inv38 ) ) && '' === \ShipContentMcp\Security\OAuth::normalize_invite( 'ABCD' )
+			&& strlen( \ShipContentMcp\Security\OAuth::invite_hash( 'X' ) ) <= 64
+			&& \ShipContentMcp\Security\OAuth::pkce_ok( $ver38, $ch38 ) && ! \ShipContentMcp\Security\OAuth::pkce_ok( $ver38 . 'x', $ch38 )
+			&& \ShipContentMcp\Security\OAuth::valid_redirect( 'http://127.0.0.1:53682/callback', false ) && ! \ShipContentMcp\Security\OAuth::valid_redirect( 'https://evil.example/cb', false ) && ! \ShipContentMcp\Security\OAuth::valid_redirect( 'javascript:alert(1)', false )
+			&& \ShipContentMcp\Security\OAuth::redirect_matches( 'http://localhost:4000/cb', array( 'http://localhost:5000/cb' ) ) && ! \ShipContentMcp\Security\OAuth::redirect_matches( 'http://localhost:4000/other', array( 'http://localhost:5000/cb' ) )
+			&& array( 'S256' ) === $as38['code_challenge_methods_supported'] && 'unknown_token' === \ShipContentMcp\Security\OAuth::verify_access( 'smcpo_' . $ver38 )
+		);
 
 		// --- 投稿タイプ・方針・ACF ---
 		$this->check( 'T40 固定ページ・メディアは候補にならない', ! isset( PostTypes::candidates()['page'] ) && ! isset( PostTypes::candidates()['attachment'] ) );

@@ -22,6 +22,7 @@ final class Plugin {
 
 		RequestContext::hooks();
 		\ShipContentMcp\Security\TokenAuth::hooks();
+		\ShipContentMcp\Security\OAuthServer::hooks();
 		SignatureAuth::hooks();
 		\ShipContentMcp\Media\UploadEndpoint::hooks();
 

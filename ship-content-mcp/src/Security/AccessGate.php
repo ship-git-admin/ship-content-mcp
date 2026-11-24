@@ -5,7 +5,7 @@
  * 通す条件：
  * 1. MCP が有効
  * 2. 接続元の IP が許可されている（設定があるとき。REMOTE_ADDR だけを見る）
- * 3. 認証の方法が許可されている（署名 / Application Password。Cookie での利用は不可）
+ * 3. 認証の方法が許可されている（OAuth / トークン / 署名 / Application Password。Cookie での利用は不可）
  * 4. ユーザーが専用の権限を持つ
  * 5. 一般の編集権限などを持たない（設定で拒否しているとき。初期は拒否）
  * 6. ツールは、MCP の入口の振り分け中（または WP-CLI）でだけ動く（コアの REST などからは動かない）
@@ -145,6 +145,9 @@ final class AccessGate {
 				return array( 'AUTH-001', 'ip not allowed', 403 );
 			}
 			$method = RequestContext::auth_method();
+			if ( 'oauth' === $method && ! $settings['auth_oauth'] ) {
+				return array( 'MCP-002', 'oauth disabled', 401 );
+			}
 			if ( 'token' === $method && ! $settings['auth_token'] ) {
 				return array( 'MCP-002', 'token auth disabled', 401 );
 			}
@@ -154,7 +157,7 @@ final class AccessGate {
 			if ( 'app_password' === $method && ! $settings['auth_app_password'] ) {
 				return array( 'MCP-002', 'application password auth disabled', 401 );
 			}
-			if ( ! in_array( $method, array( 'token', 'signature', 'app_password' ), true ) ) {
+			if ( ! in_array( $method, array( 'oauth', 'token', 'signature', 'app_password' ), true ) ) {
 				return array( 'MCP-002', 'unsupported auth: ' . ( '' === $method ? 'none' : $method ), 401 );
 			}
 		}
