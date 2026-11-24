@@ -7,6 +7,7 @@ require __DIR__ . '/bootstrap.php';
 
 use ShipContentMcp\Admin\DesktopExtension;
 use ShipContentMcp\Security\ConnectionCode;
+use ShipContentMcp\Security\DeviceKeys;
 use ShipContentMcp\Security\IpRules;
 use ShipContentMcp\Security\SignatureCodec;
 
@@ -73,11 +74,11 @@ $check( '入口：https・別ホストに変えてよい', 'https://www.example.
 $check( '入口：パス違い・ID 入り・別の方式は拒否', '' === ConnectionCode::normalize_url( 'https://www.example.invalid/wp-json/other', $ep ) && '' === ConnectionCode::normalize_url( 'https://u:p@www.example.invalid/wp-json/ship-content/mcp', $ep ) && '' === ConnectionCode::normalize_url( 'ftp://www.example.invalid/wp-json/ship-content/mcp', $ep ) && '' === ConnectionCode::normalize_url( 'https://www.example.invalid/wp-json/ship-content/mcp#x', $ep ) );
 $check( 'Basic 認証の形', ConnectionCode::valid_basic_auth( '' ) && ConnectionCode::valid_basic_auth( 'id:pw' ) && ! ConnectionCode::valid_basic_auth( 'nocolon' ) && ! ConnectionCode::valid_basic_auth( "id:pw\nx" ) );
 
-// Claude デスクトップの拡張機能（.mcpb）。
-$m = DesktopExtension::manifest( 'example', '例のサイト', base64_encode( $pk ), '9.9.9' );
+// Claude デスクトップの拡張機能（.mcpb）。トークンを貼るだけ。
+$m = DesktopExtension::manifest( 'example', '例のサイト', 'https://example.invalid/wp-json/ship-content/mcp', 'gate:pw', '9.9.9' );
 $check( '拡張機能：必須の項目', '0.3' === $m['manifest_version'] && 'ship-content-example' === $m['name'] && '9.9.9' === $m['version'] && '' !== $m['description'] && 'Ship Inc.' === $m['author']['name'] && 'node' === $m['server']['type'] );
-$check( '拡張機能：接続コードは設定の欄から（秘密は入れない）', '${user_config.connection_code}' === $m['server']['mcp_config']['env']['SHIP_MCP_CODE'] && true === $m['user_config']['connection_code']['sensitive'] && true === $m['user_config']['connection_code']['required'] && false === strpos( (string) json_encode( $m ), 'seed' ) );
-$check( '拡張機能：別のサイトのコードを止める印', base64_encode( $pk ) === $m['server']['mcp_config']['env']['SHIP_MCP_EXPECT_SERVER_KEY'] );
+$check( '拡張機能：トークンは設定の欄から（ファイルには入れない）', '${user_config.token}' === $m['server']['mcp_config']['env']['SHIP_MCP_TOKEN'] && true === $m['user_config']['token']['sensitive'] && true === $m['user_config']['token']['required'] && 0 === preg_match( '/smcp_k[0-9a-f]{16}_/', (string) json_encode( $m ) ) );
+$check( '拡張機能：入口と Basic 認証は入れておく（なければ入れない）', 'https://example.invalid/wp-json/ship-content/mcp' === $m['server']['mcp_config']['env']['SHIP_MCP_URL'] && 'gate:pw' === $m['server']['mcp_config']['env']['SHIP_MCP_BASIC_AUTH'] && ! isset( DesktopExtension::manifest( 'x', '', 'https://x.invalid/wp-json/ship-content/mcp', '', '1' )['server']['mcp_config']['env']['SHIP_MCP_BASIC_AUTH'] ) );
 $check( '拡張機能：入口のファイルと引数が合う', 'server/ship-content-mcp-bridge.mjs' === $m['server']['entry_point'] && array( '${__dirname}/server/ship-content-mcp-bridge.mjs' ) === $m['server']['mcp_config']['args'] );
 if ( class_exists( 'ZipArchive' ) ) {
 	$tmp = tempnam( sys_get_temp_dir(), 'mcpb' );
@@ -94,6 +95,18 @@ if ( class_exists( 'ZipArchive' ) ) {
 	unlink( $tmp );
 	$check( '拡張機能：ZIP の中身は manifest と中継プログラムだけ', array( 'manifest.json', 'server/ship-content-mcp-bridge.mjs' ) === $names && $same && $back === $m );
 }
+
+// トークン。
+$tok = 'smcp_k0123456789abcdef_' . str_repeat( 'A', 42 ) . 'b';
+$check( 'トークンの形', null !== DeviceKeys::parse_token( $tok ) && 'k0123456789abcdef' === DeviceKeys::parse_token( $tok )['key_id'] && null === DeviceKeys::parse_token( 'smcp_k0123_abc' ) && null === DeviceKeys::parse_token( $tok . 'x' ) && null === DeviceKeys::parse_token( 'Bearer ' . $tok ) );
+$check( 'トークンのハッシュ（tok: 付き・64文字以内・秘密が違えば違う）', str_starts_with( DeviceKeys::token_hash( 'abc' ), 'tok:' ) && strlen( DeviceKeys::token_hash( 'abc' ) ) <= 64 && DeviceKeys::token_hash( 'abc' ) !== DeviceKeys::token_hash( 'abd' ) && DeviceKeys::is_token( array( 'public_key' => DeviceKeys::token_hash( 'x' ) ) ) && ! DeviceKeys::is_token( array( 'public_key' => base64_encode( $pk ) ) ) );
+$cfg = ConnectionCode::client_configs( 'ship-example', 'http://stage.example.invalid/wp-json/ship-content/mcp', $tok, "gate:p'w" );
+$check( 'AI の設定：Claude Code の1行（トークン・Basic 認証・入口）', str_starts_with( $cfg['claude_code'], "claude mcp add --transport http --scope user 'ship-example' 'http://stage.example.invalid/wp-json/ship-content/mcp'" ) && str_contains( $cfg['claude_code'], "--header 'X-Ship-MCP-Token: " . $tok . "'" ) && str_contains( $cfg['claude_code'], "--header 'Authorization: Basic " . base64_encode( "gate:p'w" ) . "'" ) );
+$check( 'AI の設定：Codex（config.toml に足す）', str_contains( $cfg['codex'], '[mcp_servers.ship-example]' ) && str_contains( $cfg['codex'], 'url = "http://stage.example.invalid/wp-json/ship-content/mcp"' ) && str_contains( $cfg['codex'], '"X-Ship-MCP-Token" = "' . $tok . '"' ) && str_starts_with( $cfg['codex'], "cat >> ~/.codex/config.toml <<'EOF'" ) );
+$j = json_decode( $cfg['json'], true );
+$check( 'AI の設定：mcpServers の形', 'http' === $j['mcpServers']['ship-example']['type'] && $tok === $j['mcpServers']['ship-example']['headers']['X-Ship-MCP-Token'] );
+$cfg2 = ConnectionCode::client_configs( 'ship-x', 'https://x.invalid/wp-json/ship-content/mcp', $tok, '' );
+$check( 'AI の設定：Basic 認証がなければ入れない', ! str_contains( $cfg2['claude_code'], 'Authorization' ) && ! str_contains( $cfg2['codex'], 'Authorization' ) );
 $check( '同梱の中継プログラムが bridge/ と同じ', file_get_contents( __DIR__ . '/../../ship-content-mcp/assets/bridge/ship-content-mcp-bridge.mjs' ) === file_get_contents( __DIR__ . '/../../bridge/ship-content-mcp-bridge.mjs' ) );
 
 $fail = 0;

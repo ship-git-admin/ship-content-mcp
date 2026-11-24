@@ -8,44 +8,53 @@
 - 制作方針は、管理画面に自然な文章で書きます（サイト共通・投稿タイプ別）。
 - 公開・予約・削除・ACF の定義の変更・テーマやプラグインの変更は、できません。
 
-> 版 0.7.0。PM の試運用の前の段階です。
+> 版 0.8.0。PM の試運用の前の段階です。
 
 ## 必要なもの
 
 - WordPress 6.9 以上（Abilities API）、PHP 8.1 以上（sodium）
 - 公式 MCP Adapter（WordPress.org のプラグイン `mcp-adapter`）
 - ACF（入力欄の構造を読むとき）
-- PM の端末：Node.js 18 以上（中継プログラム）。パソコンに詳しくない PM は、接続コードと AI に貼る文で、Node.js から登録まで AI に任せられる（[docs/PM_GUIDE.md](docs/PM_GUIDE.md) の 0.）
+- PM の AI：HTTP の MCP に対応したもの（Claude Code・Codex など）。トークンを貼るだけ（[docs/PM_GUIDE.md](docs/PM_GUIDE.md) の 0.）。署名方式を使うときだけ Node.js 18 以上（中継プログラム）
 
 ## 入れ方（管理者）
 
 1. 公式 MCP Adapter と、このプラグインを入れて有効にします。
 2. 「設定 → Ship Content MCP → 基本設定」で、使う投稿タイプ（初期は `works`）を確かめて、「MCP を受け付ける」を有効にします。
-3. 「ユーザー → 新規追加」で、PM ごとに権限グループ「Content MCP Operator」のユーザーを作ります（投稿の編集などの権限は付けません）。
+3. 「接続」タブで、トークンを発行します（MCP 用のユーザーも、そこで作れます）。
 4. 「制作方針」に、サイト共通と投稿タイプ別の方針を書きます。
 5. 「診断」で、問題がないか確かめます。
 
 REST を止めるコード（セキュリティの Snippet など）があるサイトでは、MCP の入口 `ship-content/` を通すようにしてください。
 
-## PM の端末でつなぐ（署名方式）
+## PM の AI でつなぐ（トークン）
 
-おすすめは「接続コード」です。管理者が「端末の鍵」で発行し、PM はコードをコピーしてから次を実行します（AI に任せる手順は [docs/PM_GUIDE.md](docs/PM_GUIDE.md) の 0.）。
+管理者が「設定 → Ship Content MCP → 接続」でトークンを発行すると、Claude Code・Codex などにそのまま貼れるコマンドが出ます。例（Claude Code）：
+
+```bash
+claude mcp add --transport http --scope user ship-example https://example.invalid/wp-json/ship-content/mcp --header 'X-Ship-MCP-Token: smcp_…'
+```
+
+- サーバーの Basic 認証があるサイトでは `--header 'Authorization: Basic …'` も付きます（トークンは `X-Ship-MCP-Token` なので、ぶつかりません）。
+- デモサイトで発行したトークンは、デモサイトからコピーしたサイトでもそのまま使えます（入口の URL だけ変える）。
+- 写真は、AI がツール `get-upload-url` でもらった URL に `curl` で送ります。
+- 公開前（制作中）に使う前提です。公開するときは「すべて止めて、MCP を止める」を押し、プラグインを削除します（削除するとプラグインのデータも消えます）。
+
+### ほかのつなぎ方（署名方式）
+
+トークンを通信に乗せたくないときは、中継プログラム（`bridge/`）の署名方式も使えます。接続コード：
 
 ```bash
 node bridge/ship-content-mcp-bridge.mjs setup --clipboard --register
 ```
 
-設定のファイル（`~/.ship-content-mcp/<名前>.json`、権限 600）を作り、つながるかを確かめ、Claude Code に登録します。
-
-Claude デスクトップアプリ（チャット）では、管理画面からダウンロードしたこのサイト用の拡張機能（`.mcpb`）を開き、接続コードを貼るだけです（Node.js 不要）。ほかの AI には `setup --clipboard --print-config` で表示される設定を貼ります。
-
-鍵を自分の端末で作る方式（keygen）も使えます。
+鍵を自分の端末で作る方式（keygen）：
 
 ```bash
 node bridge/ship-content-mcp-bridge.mjs keygen --out ~/.ship-content-mcp/example.key
 ```
 
-表示された「公開鍵」を、管理者に「端末の鍵」へ登録してもらいます。登録すると、MCP の入口・鍵 ID・サイトの公開鍵が表示されます。
+表示された「公開鍵」を、管理者に登録してもらいます。
 
 AI エージェントの MCP の設定（例）：
 

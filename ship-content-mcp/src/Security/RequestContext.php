@@ -39,8 +39,8 @@ final class RequestContext {
 		$route = untrailingslashit( (string) $request->get_route() );
 		if ( Consts::REST_ROUTE === $route ) {
 			self::$dispatching = true;
-		} elseif ( 'signature' === self::$auth ) {
-			AuditLog::write( 'auth', 'denied', 'MCP-002', 'signature used outside MCP route' );
+		} elseif ( 'signature' === self::$auth || 'token' === self::$auth ) {
+			AuditLog::write( 'auth', 'denied', 'MCP-002', self::$auth . ' used outside MCP route' );
 			return new \WP_Error( 'ship_content_mcp_route', 'この認証では、この操作はできません', array( 'status' => 403 ) );
 		}
 		return $result;
@@ -88,6 +88,11 @@ final class RequestContext {
 		self::$pretend_http = $on;
 	}
 
+	public static function set_token( string $key_id ): void {
+		self::$auth   = 'token';
+		self::$key_id = $key_id;
+	}
+
 	public static function set_signature( string $key_id, string $nonce ): void {
 		self::$auth   = 'signature';
 		self::$key_id = $key_id;
@@ -108,7 +113,7 @@ final class RequestContext {
 	}
 
 	/**
-	 * どの方法で認証したか：signature / app_password / cookie / cli / ''。
+	 * どの方法で認証したか：token / signature / app_password / cookie / cli / ''。
 	 */
 	public static function auth_method(): string {
 		if ( '' !== self::$auth ) {

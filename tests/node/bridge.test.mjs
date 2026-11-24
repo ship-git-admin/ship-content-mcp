@@ -433,3 +433,42 @@ test('接続コード：SHIP_MCP_CODE だけで設定でき、空の欄の「${�
   assert.throws(() => loadConfig({ SHIP_MCP_CODE: code, SHIP_MCP_EXPECT_SERVER_KEY: other }), /別のサイト用/);
   assert.throws(() => loadConfig({ SHIP_MCP_CODE: '${user_config.connection_code}' }), /足りません/);
 });
+
+test('トークン：署名せずにトークンのヘッダーで送り、Basic 認証も付け、署名のない返事を受け取る', async () => {
+  const token = 'smcp_k0123456789abcdef_' + 'A'.repeat(42) + 'b';
+  const seen = [];
+  const server = createServer((req, res) => {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => {
+      seen.push({ token: req.headers['x-ship-mcp-token'], sig: req.headers['x-ship-mcp-signature'], auth: req.headers.authorization });
+      if (req.headers['x-ship-mcp-token'] !== token) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ code: 'ship_content_mcp_auth', message: '認証に失敗しました（MCP-002）', data: { status: 401 } }));
+      }
+      const msg = JSON.parse(Buffer.concat(chunks).toString());
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Mcp-Session-Id': 'sess-1' });
+      res.end(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { protocolVersion: '2025-11-25', serverInfo: { name: 'Mock', version: '1' }, capabilities: {} } }));
+    });
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  try {
+    const url = `http://127.0.0.1:${server.address().port}/wp-json/ship-content/mcp`;
+    const cfg = loadConfig({ SHIP_MCP_URL: url, SHIP_MCP_TOKEN: token, SHIP_MCP_BASIC_AUTH: ['gate', 'pw'].join(':'), SHIP_MCP_UPLOAD_DIRS: '${user_config.photo_dir}' });
+    assert.equal(cfg.token, token);
+    assert.equal(cfg.keyId, 'k0123456789abcdef');
+    const b = new Bridge(cfg);
+    const r = JSON.parse(await b.handleLine(init()));
+    assert.equal(r.result.serverInfo.name, 'Mock');
+    assert.equal(seen[0].token, token);
+    assert.equal(seen[0].sig, undefined, '署名のヘッダーは送らない');
+    assert.equal(seen[0].auth, 'Basic ' + Buffer.from('gate:pw').toString('base64'));
+    const bad = new Bridge(loadConfig({ SHIP_MCP_URL: url, SHIP_MCP_TOKEN: 'smcp_k0123456789abcdef_' + 'B'.repeat(43) }));
+    const e = JSON.parse(await bad.handleLine(init(2)));
+    assert.match(JSON.stringify(e), /MCP-002/);
+    assert.throws(() => loadConfig({ SHIP_MCP_URL: url, SHIP_MCP_TOKEN: 'abc' }), /トークンの形/);
+    assert.throws(() => loadConfig({ SHIP_MCP_TOKEN: token }), /足りません/);
+  } finally {
+    await new Promise((r) => server.close(r));
+  }
+});

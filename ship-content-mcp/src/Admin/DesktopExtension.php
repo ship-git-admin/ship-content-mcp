@@ -2,9 +2,9 @@
 /**
  * Claude デスクトップアプリ用の拡張機能（.mcpb）を、このサイト専用に作ってダウンロードさせる。
  *
- * - 中身は manifest.json と中継プログラム（assets/bridge/ship-content-mcp-bridge.mjs）だけ。秘密は入れない（接続コードは PM が設定の欄に貼る）。
+ * - 中身は manifest.json と中継プログラム（assets/bridge/ship-content-mcp-bridge.mjs）だけ。トークンは入れない（PM が設定の欄に貼る）。
+ * - 入口の URL（と、公開前のサイトなら Basic 認証）は、ダウンロードのときに入れておく。PM はトークンを貼るだけ。
  * - 名前をサイトごとに変える（ship-content-<短い名前>）ので、1人の PM が複数のサイトの拡張機能を並べて入れられる。
- * - サイトの公開鍵を入れておき、別のサイトの接続コードを貼ったら中継プログラムが止める（SHIP_MCP_EXPECT_SERVER_KEY）。
  * - 形式は MCPB（manifest_version 0.3、server.type node）。Claude デスクトップは Node.js を同梱しているので、PM は何も入れなくてよい。
  *
  * @package ShipContentMcp
@@ -15,7 +15,6 @@ namespace ShipContentMcp\Admin;
 use ShipContentMcp\MCP\Server;
 use ShipContentMcp\Security\AuditLog;
 use ShipContentMcp\Security\ConnectionCode;
-use ShipContentMcp\Security\SiteKey;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -37,14 +36,22 @@ final class DesktopExtension {
 	 *
 	 * @return array<string,mixed>
 	 */
-	public static function manifest( string $name, string $site, string $server_key_b64, string $version ): array {
+	public static function manifest( string $name, string $site, string $url, string $basic_auth, string $version ): array {
 		$label = '' === trim( $site ) ? $name : $site;
+		$env   = array(
+			'SHIP_MCP_URL'         => $url,
+			'SHIP_MCP_TOKEN'       => '${user_config.token}',
+			'SHIP_MCP_UPLOAD_DIRS' => '${user_config.photo_dir}',
+		);
+		if ( '' !== $basic_auth ) {
+			$env['SHIP_MCP_BASIC_AUTH'] = $basic_auth;
+		}
 		return array(
 			'manifest_version' => '0.3',
 			'name'             => 'ship-content-' . $name,
 			'display_name'     => 'Ship Content MCP（' . $label . '）',
 			'version'          => $version,
-			'description'      => $label . ' の WordPress に、記事の下書きを作る（管理者から届いた接続コードでつなぐ。公開・削除はできない）',
+			'description'      => $label . ' の WordPress に、記事の下書きを作る（管理者から届いたトークンでつなぐ。公開・削除はできない）',
 			'author'           => array( 'name' => 'Ship Inc.' ),
 			'homepage'         => 'https://github.com/ship-git-admin/ship-content-mcp',
 			'repository'       => array(
@@ -58,22 +65,18 @@ final class DesktopExtension {
 				'mcp_config'  => array(
 					'command' => 'node',
 					'args'    => array( '${__dirname}/server/ship-content-mcp-bridge.mjs' ),
-					'env'     => array(
-						'SHIP_MCP_CODE'               => '${user_config.connection_code}',
-						'SHIP_MCP_UPLOAD_DIRS'        => '${user_config.photo_dir}',
-						'SHIP_MCP_EXPECT_SERVER_KEY'  => $server_key_b64,
-					),
+					'env'     => $env,
 				),
 			),
 			'user_config'      => array(
-				'connection_code' => array(
+				'token'     => array(
 					'type'        => 'string',
-					'title'       => '接続コード',
-					'description' => '管理者から届いた「shipmcp1.」で始まる文字列を貼ります（メッセージを丸ごと貼ってもかまいません）。合鍵と同じなので、人に渡さないでください。',
+					'title'       => 'トークン',
+					'description' => '管理者から届いた「smcp_」で始まるトークンを貼ります。合鍵と同じなので、人に渡さないでください。',
 					'sensitive'   => true,
 					'required'    => true,
 				),
-				'photo_dir'       => array(
+				'photo_dir' => array(
 					'type'        => 'directory',
 					'title'       => '写真のフォルダ',
 					'description' => '写真を送ってよいフォルダ。決めなければホームフォルダの中（隠しフォルダ以外）から送れます。',
@@ -109,7 +112,7 @@ final class DesktopExtension {
 		$zip->close();
 	}
 
-	/** このサイト専用の拡張機能を作るための値（入口の URL から短い名前、サイト名、サイトの公開鍵）。 */
+	/** このサイト専用の拡張機能を作るための値（入口の URL から短い名前、サイト名、確かめた入口）。 */
 	public static function for_url( string $url ): array {
 		$endpoint = Server::endpoint();
 		$norm     = ConnectionCode::normalize_url( '' === trim( $url ) ? $endpoint : $url, $endpoint );
@@ -117,15 +120,21 @@ final class DesktopExtension {
 			$norm = $endpoint;
 		}
 		return array(
-			'name'       => ConnectionCode::default_name( $norm ),
-			'site'       => mb_substr( wp_specialchars_decode( (string) get_bloginfo( 'name' ), ENT_QUOTES ), 0, 100 ),
-			'server_key' => SiteKey::public_b64(),
+			'name' => ConnectionCode::default_name( $norm ),
+			'site' => mb_substr( wp_specialchars_decode( (string) get_bloginfo( 'name' ), ENT_QUOTES ), 0, 100 ),
+			'url'  => $norm,
 		);
 	}
 
-	/** ダウンロードのリンク（入口の URL ごと。名前が入口の URL から決まるため）。 */
-	public static function download_url( string $url ): string {
-		return wp_nonce_url( admin_url( 'admin-post.php?action=' . self::ACTION . '&url=' . rawurlencode( $url ) ), self::ACTION );
+	/** ダウンロードのフォーム（入口の URL と Basic 認証は POST で送る。URL に Basic 認証を載せない）。 */
+	public static function form( string $url, string $basic_auth, string $button ): string {
+		ob_start();
+		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" style="display:inline">';
+		echo '<input type="hidden" name="action" value="' . esc_attr( self::ACTION ) . '">';
+		wp_nonce_field( self::ACTION, '_wpnonce', false );
+		echo '<input type="hidden" name="url" value="' . esc_attr( $url ) . '"><input type="hidden" name="basic_auth" value="' . esc_attr( $basic_auth ) . '">';
+		echo '<button type="submit" class="button">' . esc_html( $button ) . '</button></form>';
+		return (string) ob_get_clean();
 	}
 
 	public static function handle_download(): void {
@@ -136,11 +145,17 @@ final class DesktopExtension {
 		if ( ! self::available() ) {
 			wp_die( esc_html__( 'このサーバーでは拡張機能のファイルを作れません（PHP の ZipArchive がない、または中継プログラムのファイルがありません）。' ) );
 		}
-		$url = isset( $_GET['url'] ) ? esc_url_raw( wp_unslash( $_GET['url'] ), array( 'http', 'https' ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- check_admin_referer で確認済み
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- check_admin_referer で確認済み
+		$url   = isset( $_POST['url'] ) ? esc_url_raw( wp_unslash( $_POST['url'] ), array( 'http', 'https' ) ) : '';
+		$basic = isset( $_POST['basic_auth'] ) ? trim( (string) wp_unslash( $_POST['basic_auth'] ) ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- パスワードは文字を変えない（形は下で確かめる）
+		// phpcs:enable
+		if ( ! ConnectionCode::valid_basic_auth( $basic ) ) {
+			wp_die( esc_html__( 'Basic 認証は「ID:パスワード」の形で入れてください。' ) );
+		}
 		$v   = self::for_url( $url );
 		$tmp = wp_tempnam( 'ship-content-mcp.mcpb' );
 		try {
-			self::build( $tmp, self::manifest( $v['name'], $v['site'], $v['server_key'], SHIP_CONTENT_MCP_VERSION ), SHIP_CONTENT_MCP_DIR . self::BRIDGE );
+			self::build( $tmp, self::manifest( $v['name'], $v['site'], $v['url'], $basic, SHIP_CONTENT_MCP_VERSION ), SHIP_CONTENT_MCP_DIR . self::BRIDGE );
 		} catch ( \RuntimeException $e ) {
 			@unlink( $tmp ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged,WordPress.WP.AlternativeFunctions.unlink_unlink
 			wp_die( esc_html( $e->getMessage() ) );

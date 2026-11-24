@@ -21,7 +21,9 @@ final class Plugin {
 		Installer::maybe_upgrade();
 
 		RequestContext::hooks();
+		\ShipContentMcp\Security\TokenAuth::hooks();
 		SignatureAuth::hooks();
+		\ShipContentMcp\Media\UploadEndpoint::hooks();
 
 		if ( function_exists( 'wp_register_ability' ) ) {
 			add_action( 'wp_abilities_api_categories_init', array( Abilities::class, 'register_category' ) );

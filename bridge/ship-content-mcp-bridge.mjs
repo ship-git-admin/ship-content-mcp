@@ -18,6 +18,7 @@
 //   node ship-content-mcp-bridge.mjs                                   … 中継（AI エージェントの設定から起動する）
 //
 // 設定（環境変数）：
+//   SHIP_MCP_TOKEN        管理画面で発行したトークン（smcp_…）。SHIP_MCP_URL と組みで使う（署名の鍵は要らない。Claude デスクトップの拡張機能が使う）
 //   SHIP_MCP_CODE         接続コードそのもの（Claude デスクトップの拡張機能が、設定の欄から渡す。これ1つで足りる）
 //   SHIP_MCP_CONFIG       setup が作った設定のファイル（これ1つで足りる。下の環境変数があれば、そちらを優先）
 //   SHIP_MCP_URL          MCP の入口（管理画面の「端末の鍵」に表示）
@@ -42,7 +43,7 @@ import { realpathSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
-export const VERSION = '0.7.0';
+export const VERSION = '0.8.0';
 export const REQ_PREFIX = 'ship-content-mcp-req-v1';
 export const RES_PREFIX = 'ship-content-mcp-res-v1';
 export const CODE_PREFIX = 'shipmcp1.';
@@ -175,15 +176,34 @@ export function loadConfig(env = process.env) {
     uploadDirs: envValue(env, 'SHIP_MCP_UPLOAD_DIRS') || (Array.isArray(file.upload_dirs) ? file.upload_dirs.join(delimiter) : ''),
   };
   const keyFilePath = envValue(env, 'SHIP_MCP_KEY_FILE');
+  // トークン（管理画面で発行したもの）を使うときは、署名の鍵は要らない。
+  const tokenText = envValue(env, 'SHIP_MCP_TOKEN').trim();
+  const tokenMatch = tokenText ? /^smcp_(k[0-9a-f]{16})_[A-Za-z0-9_-]{43}$/.exec(tokenText) : null;
+  if (tokenText && !tokenMatch) throw new Error('トークンの形が違います（管理画面で発行した「smcp_」で始まる文字列を、そのまま入れてください）');
   const missing = [];
   if (!v.url) missing.push('SHIP_MCP_URL');
-  if (!v.keyId) missing.push('SHIP_MCP_KEY_ID');
-  if (!keyFilePath && !code && !file.private_key) missing.push('SHIP_MCP_KEY_FILE');
-  if (!v.serverKey) missing.push('SHIP_MCP_SERVER_KEY');
+  if (!tokenMatch) {
+    if (!v.keyId) missing.push('SHIP_MCP_KEY_ID');
+    if (!keyFilePath && !code && !file.private_key) missing.push('SHIP_MCP_KEY_FILE');
+    if (!v.serverKey) missing.push('SHIP_MCP_SERVER_KEY');
+  }
   if (missing.length) throw new Error(`設定が足りません：${missing.join(', ')}（接続コードを使うときは、拡張機能の「接続コード」の欄か SHIP_MCP_CODE・SHIP_MCP_CONFIG を確かめてください）`);
   const url = new URL(v.url);
   if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error('SHIP_MCP_URL は http:// か https:// で始めてください');
   if (url.username || url.password) throw new Error('SHIP_MCP_URL に ID・パスワードを入れないでください（SHIP_MCP_BASIC_AUTH を使う）');
+  let basic = '';
+  if (v.basic) {
+    if (!v.basic.includes(':')) throw new Error('SHIP_MCP_BASIC_AUTH は「ID:パスワード」の形にしてください');
+    basic = 'Basic ' + Buffer.from(v.basic, 'utf8').toString('base64');
+  }
+  const timeoutMs = Math.max(5000, Math.min(600000, Number(envValue(env, 'SHIP_MCP_TIMEOUT_MS') || 60000) || 60000));
+  const uploadRoots = (v.uploadDirs ? v.uploadDirs.split(delimiter) : [homedir()])
+    .filter(Boolean)
+    .map((d) => { try { return realpathSync(resolve(expandHome(d))); } catch { return null; } })
+    .filter(Boolean);
+  if (tokenMatch) {
+    return { url, keyId: tokenMatch[1], token: tokenText, privateKey: null, serverKey: null, basic, timeoutMs, uploadRoots };
+  }
   if (!/^k[0-9a-f]{16}$/.test(v.keyId)) throw new Error('SHIP_MCP_KEY_ID の形が違います');
   let privateKey;
   if (keyFilePath) {
@@ -202,19 +222,9 @@ export function loadConfig(env = process.env) {
   if (expect && Buffer.from(expect.trim(), 'base64').toString('base64') !== serverRaw.toString('base64')) {
     throw new Error('この拡張機能は、別のサイト用です（このサイトの接続コードを貼ってください。サイトごとに拡張機能が分かれています）');
   }
-  let basic = '';
-  if (v.basic) {
-    if (!v.basic.includes(':')) throw new Error('SHIP_MCP_BASIC_AUTH は「ID:パスワード」の形にしてください');
-    basic = 'Basic ' + Buffer.from(v.basic, 'utf8').toString('base64');
-  }
-  const timeoutMs = Math.max(5000, Math.min(600000, Number(envValue(env, 'SHIP_MCP_TIMEOUT_MS') || 60000) || 60000));
   if (url.protocol === 'http:') {
     log('注意：HTTP で接続します。パスワードは送りませんが、中身（文章・写真）は暗号化されません。公開予定の内容だけを扱ってください。');
   }
-  const uploadRoots = (v.uploadDirs ? v.uploadDirs.split(delimiter) : [homedir()])
-    .filter(Boolean)
-    .map((d) => { try { return realpathSync(resolve(expandHome(d))); } catch { return null; } })
-    .filter(Boolean);
   return { url, keyId: v.keyId, privateKey, serverKey, basic, timeoutMs, uploadRoots };
 }
 
@@ -289,17 +299,20 @@ export class Bridge {
     const timestamp = String(Math.floor(Date.now() / 1000));
     const nonce = randomBytes(18).toString('base64url');
     const uri = url.pathname + url.search;
-    const signature = signRequest(this.cfg.privateKey, {
-      method, host: url.host, uri, timestamp, nonce, keyId: this.cfg.keyId, sessionId: this.sessionId, body,
-    });
     const headers = {
       Accept: 'application/json, text/event-stream',
-      'X-Ship-MCP-Key': this.cfg.keyId,
-      'X-Ship-MCP-Timestamp': timestamp,
-      'X-Ship-MCP-Nonce': nonce,
-      'X-Ship-MCP-Signature': signature,
       'User-Agent': `ship-content-mcp-bridge/${VERSION}`,
     };
+    if (this.cfg.token) {
+      headers['X-Ship-MCP-Token'] = this.cfg.token;
+    } else {
+      headers['X-Ship-MCP-Key'] = this.cfg.keyId;
+      headers['X-Ship-MCP-Timestamp'] = timestamp;
+      headers['X-Ship-MCP-Nonce'] = nonce;
+      headers['X-Ship-MCP-Signature'] = signRequest(this.cfg.privateKey, {
+        method, host: url.host, uri, timestamp, nonce, keyId: this.cfg.keyId, sessionId: this.sessionId, body,
+      });
+    }
     if (method !== 'DELETE') headers['Content-Type'] = 'application/json';
     if (this.sessionId) headers['Mcp-Session-Id'] = this.sessionId;
     if (this.protocolVersion) headers['MCP-Protocol-Version'] = this.protocolVersion;
@@ -315,9 +328,17 @@ export class Bridge {
     }
     const resBody = Buffer.from(await res.arrayBuffer());
     const resSession = res.headers.get('mcp-session-id') || '';
-    const signed = verifyResponse(this.cfg.serverKey, { nonce, status: res.status, sessionId: resSession, body: resBody }, res.headers.get('x-ship-mcp-response-signature'));
-    if (!signed) {
-      return { ok: false, status: res.status, message: unsignedMessage(res.status, res.headers.has('x-ship-mcp-response-signature')) };
+    if (this.cfg.token) {
+      // トークンのときは、返事に署名はない。WordPress の JSON でない返事（サーバーの Basic 認証・転送など）だけを分かる言葉にする。
+      const json = (res.headers.get('content-type') || '').includes('json');
+      if ((res.status >= 300 && res.status < 400) || ((res.status === 401 || res.status === 404) && !json)) {
+        return { ok: false, status: res.status, message: unsignedMessage(res.status, false) };
+      }
+    } else {
+      const signed = verifyResponse(this.cfg.serverKey, { nonce, status: res.status, sessionId: resSession, body: resBody }, res.headers.get('x-ship-mcp-response-signature'));
+      if (!signed) {
+        return { ok: false, status: res.status, message: unsignedMessage(res.status, res.headers.has('x-ship-mcp-response-signature')) };
+      }
     }
     if (resSession) this.sessionId = resSession;
     return { ok: true, status: res.status, body: resBody };

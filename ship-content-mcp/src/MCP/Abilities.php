@@ -7,7 +7,7 @@
  * - 権限は、ツールごとの permission_callback と、処理の中の AccessGate::assert() の2回確かめる。
  * - 読み取り：投稿タイプの一覧・制作方針・ACF の構造・検索・投稿の読み戻し。
  * - 書き込み（下書きだけ）：検証（dry run）・作成・修正。公開・予約・削除はない。
- * - 写真：分割転送（prepare-upload → upload-chunk × N → finish-upload）。URL からの取得はない。
+ * - 写真：アップロード用 URL（get-upload-url → AI が curl で送る）か、分割転送（prepare-upload → upload-chunk × N → finish-upload）。URL からの取得はない。
  *
  * @package ShipContentMcp
  */
@@ -37,12 +37,13 @@ final class Abilities {
 	public const VALIDATE_DRAFT  = 'ship-content/validate-draft';
 	public const CREATE_DRAFT    = 'ship-content/create-draft';
 	public const UPDATE_DRAFT    = 'ship-content/update-draft';
+	public const GET_UPLOAD_URL  = 'ship-content/get-upload-url';
 	public const PREPARE_UPLOAD  = 'ship-content/prepare-upload';
 	public const UPLOAD_CHUNK    = 'ship-content/upload-chunk';
 	public const FINISH_UPLOAD   = 'ship-content/finish-upload';
 
 	/** 自作サーバーに載せるツール（この順で一覧に出る）。 */
-	public const TOOLS = array( self::LIST_POST_TYPES, self::GET_POLICY, self::GET_ACF_SCHEMA, self::SEARCH_POSTS, self::GET_POST, self::VALIDATE_DRAFT, self::CREATE_DRAFT, self::UPDATE_DRAFT, self::PREPARE_UPLOAD, self::UPLOAD_CHUNK, self::FINISH_UPLOAD );
+	public const TOOLS = array( self::LIST_POST_TYPES, self::GET_POLICY, self::GET_ACF_SCHEMA, self::SEARCH_POSTS, self::GET_POST, self::VALIDATE_DRAFT, self::CREATE_DRAFT, self::UPDATE_DRAFT, self::GET_UPLOAD_URL, self::PREPARE_UPLOAD, self::UPLOAD_CHUNK, self::FINISH_UPLOAD );
 
 	/** 成功を記録しないツール（分割の数だけ行が増えるため。失敗は記録する）。 */
 	private const QUIET_ON_SUCCESS = array( self::UPLOAD_CHUNK );
@@ -379,9 +380,44 @@ final class Abilities {
 			'maxLength' => 32,
 		);
 		self::add(
+			self::GET_UPLOAD_URL,
+			'写真のアップロード用 URL をもらう',
+			'写真（JPEG・PNG・WebP）をメディアに登録するための、1回だけ使える URL（30分）と、そのまま使える curl のコマンドを返す。シェルのコマンドを実行できる AI は、これを使うのがいちばん簡単：command の <写真のファイルのパス> を手元の写真のパスに置き換えて実行すると、返事の JSON に attachment_id と URL が入っている。1枚ごとに呼ぶ。コマンドを実行できない AI は prepare-upload → upload-chunk → finish-upload を使う。' . UploadService::PUBLIC_NOTICE,
+			array(
+				'type'                 => 'object',
+				'properties'           => array(
+					'post_type'         => $post_type,
+					'filename'          => array(
+						'type'        => 'string',
+						'minLength'   => 1,
+						'maxLength'   => 200,
+						'description' => '写真のファイル名（拡張子は .jpg・.jpeg・.png・.webp）。',
+					),
+					'title'             => array(
+						'type'      => 'string',
+						'maxLength' => 200,
+					),
+					'alt'               => array(
+						'type'        => 'string',
+						'maxLength'   => 300,
+						'description' => '代替テキスト（写真の内容を短く。お客様の名前・住所は入れない）。',
+					),
+					'attach_to_post_id' => array(
+						'type'        => 'integer',
+						'minimum'     => 1,
+						'description' => '任意。同じ投稿タイプの下書きに添付するとき。',
+					),
+				),
+				'required'             => array( 'post_type', 'filename' ),
+				'additionalProperties' => false,
+			),
+			array( self::class, 'get_upload_url' ),
+			$meta( false )
+		);
+		self::add(
 			self::PREPARE_UPLOAD,
 			'写真の転送を始める',
-			'写真（JPEG・PNG・WebP）をメディアに登録する転送を始める。ファイル名・MIME・大きさ・ファイル全体の SHA-256 を送ると、upload_session_id と分割の大きさ（chunk_size）を返す。同じ写真がすでに登録されていれば attachment_id を返す（転送は不要）。ふつうは中継プログラムの ship-content-upload-local-image を使えば、この3つのツールを自分で呼ぶ必要はない。' . UploadService::PUBLIC_NOTICE,
+			'写真（JPEG・PNG・WebP）をメディアに登録する転送を始める。ファイル名・MIME・大きさ・ファイル全体の SHA-256 を送ると、upload_session_id と分割の大きさ（chunk_size）を返す。同じ写真がすでに登録されていれば attachment_id を返す（転送は不要）。シェルのコマンドを実行できる AI は get-upload-url を使う方が簡単。中継プログラムを使っているときは ship-content-upload-local-image を使えば、この3つのツールを自分で呼ぶ必要はない。' . UploadService::PUBLIC_NOTICE,
 			array(
 				'type'                 => 'object',
 				'properties'           => array(
@@ -641,6 +677,14 @@ final class Abilities {
 	 */
 	public static function update_draft( array $input ): array {
 		return ( new DraftService() )->update( $input );
+	}
+
+	/**
+	 * @param array<string,mixed> $input
+	 * @return array<string,mixed>
+	 */
+	public static function get_upload_url( array $input ): array {
+		return \ShipContentMcp\Media\UploadEndpoint::issue( $input );
 	}
 
 	/**

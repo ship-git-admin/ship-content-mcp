@@ -18,17 +18,26 @@
 - ACF の入力欄を変えたら、「診断」の「確かめた構造」が赤になる。AI で試し、表示を確かめてから、基本設定の「いまの構造を確かめ直した」にチェックを入れて保存する。
 - 固定ページ・メディア・内部の投稿タイプは、設定にかかわらず使えない。
 
-## 3. PM のユーザーと鍵
+## 3. トークンを発行して PM に渡す
 
-1. 「ユーザー → 新規追加」で、PM ごとに権限グループ「Content MCP Operator」のユーザーを作る（投稿の編集などの権限は付けない。付けると MCP で使えなくなる）。パスワードは使わない（ログインしない）。
-2. 「端末の鍵」タブの「接続コードを発行する」で、ユーザー・端末の名前・入口の URL・Basic 認証（ある場合だけ）を入れて発行する。表示された「送る文」を、そのまま PM に DM で送る（コードは1回だけ表示。合鍵と同じなので共有のチャンネルに貼らない）。PM は [PM 向けの手順](PM_GUIDE.md) の 0. のとおり、使う AI に合わせて設定する。
-   - Claude デスクトップアプリ（チャット）を使う PM には、発行の結果にある「拡張機能（ship-content-<名前>.mcpb）をダウンロード」のファイルも一緒に送る（秘密は入っていない。同じサイトの PM には同じファイルでよい。名前は入口の URL から決まるので、接続コードと同じ入口で作る）。PM はファイルを開いて、接続コードを貼るだけ。
-   - 入口の URL：同じサイトに `https://` の入口（正しい証明書）があれば `https://` に変える。署名方式は HTTP でも秘密を送らないが、文章・写真は HTTPS でないと暗号化されない。パス（`/wp-json/…`）は変えない。
-   - WP-CLI でも発行できる：`echo -n 'ID:パスワード' | wp ship-content-mcp keys issue --for-user=<ID> --label=<端末の名前> --entry-url=<https の入口> --basic-auth-stdin`（Basic 認証がなければ `--basic-auth-stdin` と echo は要らない。WP-CLI の `--url` とは別の `--entry-url` を使う）。
-   - より堅い方式：PM が中継プログラムの keygen で鍵を作り、公開鍵を送ってもらって「公開鍵を登録する」で登録する（秘密が PM のパソコンから出ない）。登録後に出る入口・鍵 ID・サイトの公開鍵を PM に伝える。
-3. 端末をなくした・担当が替わったときは、その鍵を「止める」。
+1. 「設定 → Ship Content MCP → 接続」の「トークンを発行する」で、ユーザー（ふつうは「MCP 用のユーザーを新しく作る」）・名前・入口の URL・Basic 認証（公開前のサイトだけ）を入れて発行する。
+2. 出てきたコマンド（Claude Code・Codex・ほかの AI）を、PM に DM で送る。Claude デスクトップアプリ（チャット）を使う PM には、「拡張機能をダウンロード」のファイルも送る（ファイルにトークンは入っていない）。トークンはこの1回だけ表示される。
+3. 漏れた・担当が替わったときは、「発行したトークン・鍵」の一覧で「止める」。
 
-HTTPS のサイトでは、Application Password でも接続できる（HTTP のサイト・サーバーの Basic 認証があるサイトでは、端末の署名を使う）。
+- **デモサイトで発行しておけば、デモサイトからコピーしたサイトでも同じトークンが使える**（トークンのハッシュとユーザーが DB ごとコピーされるため）。PM はコマンドの入口の URL だけ変えればよい。止めるときは、コピーした各サイトで止める（`wp ship-content-mcp keys revoke --key-id=<鍵 ID>`）。
+- トークンは HTTP でも受け付ける（基本設定の「トークンを HTTP でも受け付ける」。公開前の確認用 URL のため）。HTTP ではトークンが暗号化されずに流れるので、**公開するときはプラグインごと外す**（下の「公開の前に片付ける」）。
+- WP-CLI でも発行できる：`echo -n 'ID:パスワード' | wp ship-content-mcp keys token --for-user=new --label=制作チーム --basic-auth-stdin`（`--for-user` は既存のユーザー ID でもよい。入口を変えるときは `--entry-url=`）。
+- 写真は、AI が `get-upload-url` でもらった URL（30分・1回だけ）に curl で送る。サーバーの Basic 認証があるサイトでは、MCP の接続で届いた Basic 認証を、そのコマンドに入れて返す。
+
+### 公開の前に片付ける
+
+1. 「接続」タブの「すべて止めて、MCP を止める」を押す（または `wp ship-content-mcp prelaunch --yes`）。発行したトークン・鍵がすべて止まり、MCP の入口がなくなる。
+2. 「プラグイン」で「Ship Content MCP」と「MCP Adapter」を無効にして削除する（または `wp plugin delete ship-content-mcp mcp-adapter --deactivate`）。このプラグインの表・設定・制作方針・記録・ロールも消える（`uninstall.php`）。作った下書き・写真と、MCP 用のユーザーは残る。
+3. REST を止めるコード（Snippet など）に足した `ship-content/` の例外も、要らなければ外す。
+
+### ほかのつなぎ方
+
+「接続」タブの「ほかのつなぎ方」に、接続コード（中継プログラムの setup 用）と、端末の公開鍵の登録（keygen。秘密が PM のパソコンから出ない、いちばん堅い方式）がある。ふだんは使わない。
 
 ## 4. 制作方針の書き方
 
@@ -61,5 +70,6 @@ HTTPS のサイトでは、Application Password でも接続できる（HTTP の
 | `wp ship-content-mcp selftest` | 自己テスト（読み取り中心） |
 | `wp ship-content-mcp enable` / `disable` | MCP を受け付ける・止める |
 | `wp ship-content-mcp post-type <name> <off\|unverified\|testing\|tested\|active> [--reverify]` | 投稿タイプの使い方（試験合格・稼働で構造を記録） |
-| `wp ship-content-mcp keys list\|add\|revoke` | 端末の鍵 |
+| `wp ship-content-mcp keys list\|token\|issue\|add\|revoke` | トークン・接続コード・端末の鍵 |
+| `wp ship-content-mcp prelaunch [--yes]` | 公開の前の片付け（すべて止めて、MCP を止める） |
 | `wp ship-content-mcp cleanup-tests [--yes]` | 試験の下書き・写真・転送の片付け |

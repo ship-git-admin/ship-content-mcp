@@ -145,13 +145,16 @@ final class AccessGate {
 				return array( 'AUTH-001', 'ip not allowed', 403 );
 			}
 			$method = RequestContext::auth_method();
+			if ( 'token' === $method && ! $settings['auth_token'] ) {
+				return array( 'MCP-002', 'token auth disabled', 401 );
+			}
 			if ( 'signature' === $method && ! $settings['auth_signature'] ) {
 				return array( 'MCP-002', 'signature auth disabled', 401 );
 			}
 			if ( 'app_password' === $method && ! $settings['auth_app_password'] ) {
 				return array( 'MCP-002', 'application password auth disabled', 401 );
 			}
-			if ( ! in_array( $method, array( 'signature', 'app_password' ), true ) ) {
+			if ( ! in_array( $method, array( 'token', 'signature', 'app_password' ), true ) ) {
 				return array( 'MCP-002', 'unsupported auth: ' . ( '' === $method ? 'none' : $method ), 401 );
 			}
 		}

@@ -35,14 +35,14 @@ final class SettingsPage {
 	private const TABS = array(
 		'settings'    => '基本設定',
 		'policy'      => '制作方針',
-		'keys'        => '端末の鍵',
+		'keys'        => '接続',
 		'diagnostics' => '診断',
 		'log'         => '記録',
 	);
 
 	public static function hooks(): void {
 		add_action( 'admin_menu', array( self::class, 'menu' ) );
-		foreach ( array( 'save_settings', 'save_policies', 'add_key', 'revoke_key' ) as $action ) {
+		foreach ( array( 'save_settings', 'save_policies', 'add_key', 'revoke_key', 'prelaunch' ) as $action ) {
 			add_action( 'admin_post_ship_content_mcp_' . $action, array( self::class, 'handle_' . $action ) );
 		}
 		add_action( 'admin_notices', array( self::class, 'dependency_notice' ) );
@@ -116,6 +116,8 @@ final class SettingsPage {
 		}
 		echo '</tbody></table><p class="description">最初は works だけを使います。「未検証」は読み取りだけ。「試験中」で下書きの保存を試し（作った下書きに試験の印が付き、WP-CLI の cleanup-tests で片付けられます）、実機の試験に合格したら「試験合格」にしてください。「試験合格」「稼働」にしたときの入力欄（ACF）の構造を記録し、その後に構造が変わったら、確かめ直すまで書き込みを止めます。</p></td></tr>';
 		self::checkbox_row( 'reject_privileged', '権限の強いユーザーを拒否する', $s['reject_privileged'], '投稿の編集・公開・アップロード・設定変更などの権限を持つユーザーは、MCP で使えません（推奨）。PM には「' . Consts::ROLE_LABEL . '」のユーザーを使ってください。' );
+		self::checkbox_row( 'auth_token', 'トークンで認証する', $s['auth_token'], '「接続」タブで発行したトークンを、Claude Code・Codex などの MCP の設定に入れるだけでつながります（いちばん簡単）。' );
+		self::checkbox_row( 'token_http', 'トークンを HTTP でも受け付ける', $s['token_http'], '公開前の確認用 URL（HTTP）で使うためです。HTTP ではトークンが暗号化されずに流れるので、公開するときはこのプラグインごと外してください（「接続」タブの「公開の前に片付ける」）。' );
 		self::checkbox_row( 'auth_signature', '端末の署名で認証する', $s['auth_signature'], 'パスワードを通信に乗せません。HTTP の動作確認URLや、Basic 認証のあるサイトでも使えます。' );
 		self::checkbox_row( 'auth_app_password', 'Application Password で認証する', $s['auth_app_password'], 'HTTPS のサイトだけで使えます（WordPress の決まり）。' );
 		echo '<tr><th scope="row"><label for="scm-max">写真の上限</label></th><td><input id="scm-max" type="number" name="media_max_mb" min="1" max="100" value="' . esc_attr( (string) $s['media_max_mb'] ) . '" class="small-text"> MB<p class="description">写真は JPEG・PNG・WebP だけ受け付けます（URL からの取得はしません）。</p></td></tr>';
@@ -163,11 +165,45 @@ final class SettingsPage {
 
 	private static function tab_keys(): void {
 		$endpoint = Server::endpoint();
-		echo '<h2>接続の情報（PM の中継プログラムに設定する）</h2><table class="form-table" role="presentation">';
+		$users    = get_users(
+			array(
+				'capability' => Consts::CAP,
+				'number'     => 200,
+			)
+		);
+
+		self::token_section( $users, $endpoint );
+
+		echo '<h2>発行したトークン・鍵</h2><table class="widefat striped"><thead><tr><th>種類</th><th>鍵 ID</th><th>ユーザー</th><th>名前</th><th>発行</th><th>最後に使った日時</th><th>状態</th><th></th></tr></thead><tbody>';
+		foreach ( DeviceKeys::all() as $row ) {
+			$user = get_userdata( (int) $row['user_id'] );
+			echo '<tr><td>' . ( DeviceKeys::is_token( $row ) ? 'トークン' : '端末の鍵' ) . '</td><td><code>' . esc_html( (string) $row['key_id'] ) . '</code></td><td>' . esc_html( $user ? $user->user_login : '（削除されたユーザー）' ) . '</td><td>' . esc_html( (string) $row['label'] ) . '</td>';
+			echo '<td>' . esc_html( self::local_time( (string) $row['created_at'] ) ) . '</td><td>' . esc_html( self::local_time( (string) ( $row['last_used_at'] ?? '' ) ) ) . '</td>';
+			echo '<td>' . ( empty( $row['revoked_at'] ) ? '有効' : '止めた（' . esc_html( self::local_time( (string) $row['revoked_at'] ) ) . '）' ) . '</td><td>';
+			if ( empty( $row['revoked_at'] ) ) {
+				echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" onsubmit="return confirm(\'止めます。これを使っている AI からは接続できなくなります。\');">';
+				wp_nonce_field( 'ship_content_mcp_revoke_key' );
+				echo '<input type="hidden" name="action" value="ship_content_mcp_revoke_key"><input type="hidden" name="key_id" value="' . esc_attr( (string) $row['key_id'] ) . '">';
+				submit_button( '止める', 'delete small', 'submit', false );
+				echo '</form>';
+			}
+			echo '</td></tr>';
+		}
+		echo '</tbody></table>';
+
+		echo '<h2>公開の前に片付ける</h2>';
+		echo '<p>この仕組みは、公開前（制作中）に使う前提です。サイトを公開するときは、次の2つを行ってください。</p><ol><li>下の「すべて止めて、MCP を止める」を押す（発行したトークン・鍵をすべて止め、MCP の入口をなくします）。</li><li>「プラグイン」の画面で「Ship Content MCP」と「MCP Adapter」を無効にして削除する（このプラグインの設定・記録も消えます。作った下書きと写真は残ります）。</li></ol>';
+		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" onsubmit="return confirm(\'発行したトークン・鍵をすべて止め、MCP を止めます。よろしいですか？\');">';
+		wp_nonce_field( 'ship_content_mcp_prelaunch' );
+		echo '<input type="hidden" name="action" value="ship_content_mcp_prelaunch">';
+		submit_button( 'すべて止めて、MCP を止める', 'delete', 'submit', false );
+		echo ' <a class="button" href="' . esc_url( admin_url( 'plugins.php' ) ) . '">プラグインの画面へ</a></form>';
+
+		echo '<details style="margin-top:2em"><summary style="cursor:pointer;font-weight:600">ほかのつなぎ方（接続コード・端末の公開鍵。ふだんは使いません）</summary>';
+		echo '<h3>接続の情報（中継プログラムに設定する）</h3><table class="form-table" role="presentation">';
 		echo '<tr><th>MCP の入口</th><td><code>' . esc_html( $endpoint ) . '</code></td></tr>';
 		echo '<tr><th>サイトの公開鍵</th><td><code style="word-break:break-all">' . esc_html( SiteKey::public_b64() ) . '</code><p class="description">応答が本当にこのサイトから来たかを、中継プログラムが確かめるための鍵です（秘密ではありません）。指紋 ' . esc_html( SiteKey::fingerprint() ) . '</p></td></tr>';
 		echo '</table>';
-
 		$new_key = isset( $_GET['scm_key'] ) ? sanitize_key( wp_unslash( $_GET['scm_key'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		if ( '' !== $new_key && DeviceKeys::find( $new_key ) ) {
 			$lines = array(
@@ -179,53 +215,143 @@ final class SettingsPage {
 			);
 			echo '<div class="notice notice-success inline"><p>登録しました。PM の中継プログラムに、次の値を設定してください（秘密鍵とパスワードは、ここには表示しません）。</p><pre style="white-space:pre-wrap">' . esc_html( implode( "\n", $lines ) ) . '</pre></div>';
 		}
-
-		$users = get_users(
-			array(
-				'capability' => Consts::CAP,
-				'number'     => 200,
-			)
-		);
-
 		self::issue_section( $users, $endpoint );
-
-		echo '<h2>公開鍵を登録する（鍵を PM のパソコンで作る方式）</h2>';
-		echo '<p class="description">PM が中継プログラムの keygen で鍵を作り、公開鍵を送ってくる場合に使います。秘密が PM のパソコンから一度も出ない、より堅い方式です。ふだんは上の「接続コード」で足ります。</p>';
-		if ( array() === $users ) {
-			echo '<p>MCP を使えるユーザーがいません。まず「ユーザー → 新規追加」で、権限グループ「' . esc_html( Consts::ROLE_LABEL ) . '」のユーザーを PM ごとに作ってください。</p>';
-		} else {
+		echo '<h3>端末の公開鍵を登録する（鍵を PM のパソコンで作る方式）</h3>';
+		echo '<p class="description">PM が中継プログラムの keygen で鍵を作り、公開鍵を送ってくる場合に使います。秘密が PM のパソコンから一度も出ない、いちばん堅い方式です。</p>';
+		if ( array() !== $users ) {
 			echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
 			wp_nonce_field( 'ship_content_mcp_add_key' );
 			echo '<input type="hidden" name="action" value="ship_content_mcp_add_key"><table class="form-table" role="presentation">';
-			echo '<tr><th><label for="scm-user">ユーザー</label></th><td><select id="scm-user" name="user_id">';
-			foreach ( $users as $u ) {
-				$why = AccessGate::user_problem( (int) $u->ID );
-				echo '<option value="' . esc_attr( (string) $u->ID ) . '"' . disabled( '' !== $why, true, false ) . '>' . esc_html( $u->display_name . '（' . $u->user_login . '）' . ( '' !== $why ? ' — 使えません：' . $why : '' ) ) . '</option>';
-			}
-			echo '</select></td></tr>';
+			echo '<tr><th><label for="scm-user">ユーザー</label></th><td>' . self::user_select( 'scm-user', 'user_id', $users, false ) . '</td></tr>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- user_select でエスケープ済み
 			echo '<tr><th><label for="scm-label">端末の名前</label></th><td><input id="scm-label" name="label" class="regular-text" maxlength="100" placeholder="例：PM 山田 MacBook"></td></tr>';
 			echo '<tr><th><label for="scm-pub">公開鍵</label></th><td><input id="scm-pub" name="public_key" class="large-text code" maxlength="64" placeholder="中継プログラムの keygen が表示した「公開鍵」"><p class="description">秘密鍵は貼らないでください（受け付けません）。端末ごとに別の鍵を登録します。</p></td></tr>';
 			echo '</table>';
 			submit_button( '登録する' );
 			echo '</form>';
 		}
+		echo '</details>';
+	}
 
-		echo '<h2>登録済みの鍵</h2><table class="widefat striped"><thead><tr><th>鍵 ID</th><th>ユーザー</th><th>端末</th><th>登録</th><th>最後に使った日時</th><th>状態</th><th></th></tr></thead><tbody>';
-		foreach ( DeviceKeys::all() as $row ) {
-			$user = get_userdata( (int) $row['user_id'] );
-			echo '<tr><td><code>' . esc_html( (string) $row['key_id'] ) . '</code></td><td>' . esc_html( $user ? $user->user_login : '（削除されたユーザー）' ) . '</td><td>' . esc_html( (string) $row['label'] ) . '</td>';
-			echo '<td>' . esc_html( self::local_time( (string) $row['created_at'] ) ) . '</td><td>' . esc_html( self::local_time( (string) ( $row['last_used_at'] ?? '' ) ) ) . '</td>';
-			echo '<td>' . ( empty( $row['revoked_at'] ) ? '有効' : '止めた（' . esc_html( self::local_time( (string) $row['revoked_at'] ) ) . '）' ) . '</td><td>';
-			if ( empty( $row['revoked_at'] ) ) {
-				echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" onsubmit="return confirm(\'この鍵を止めます。この端末からは接続できなくなります。\');">';
-				wp_nonce_field( 'ship_content_mcp_revoke_key' );
-				echo '<input type="hidden" name="action" value="ship_content_mcp_revoke_key"><input type="hidden" name="key_id" value="' . esc_attr( (string) $row['key_id'] ) . '">';
-				submit_button( '止める', 'delete small', 'submit', false );
-				echo '</form>';
-			}
-			echo '</td></tr>';
+	/**
+	 * @param list<\WP_User> $users
+	 */
+	private static function user_select( string $id, string $name, array $users, bool $offer_new ): string {
+		$out = '<select id="' . esc_attr( $id ) . '" name="' . esc_attr( $name ) . '">';
+		if ( $offer_new ) {
+			$out .= '<option value="new"' . selected( array() === $users, true, false ) . '>（MCP 用のユーザーを新しく作る）</option>';
 		}
-		echo '</tbody></table>';
+		foreach ( $users as $u ) {
+			$why  = AccessGate::user_problem( (int) $u->ID );
+			$out .= '<option value="' . esc_attr( (string) $u->ID ) . '"' . disabled( '' !== $why, true, false ) . '>' . esc_html( $u->display_name . '（' . $u->user_login . '）' . ( '' !== $why ? ' — 使えません：' . $why : '' ) ) . '</option>';
+		}
+		return $out . '</select>';
+	}
+
+	/** MCP 用のユーザー（権限グループ Content MCP Operator、ログインしない）を作る。 */
+	private static function create_operator_user(): int {
+		$login = 'mcp-operator';
+		for ( $i = 2; username_exists( $login ) && $i < 100; $i++ ) {
+			$login = 'mcp-operator-' . $i;
+		}
+		$id = wp_insert_user(
+			array(
+				'user_login'   => $login,
+				'user_pass'    => wp_generate_password( 40, true, true ),
+				'display_name' => 'MCP 用ユーザー',
+				'role'         => Consts::ROLE,
+			)
+		);
+		if ( is_wp_error( $id ) ) {
+			throw new \InvalidArgumentException( 'MCP 用のユーザーを作れませんでした（' . $id->get_error_message() . '）' );
+		}
+		AuditLog::write( 'admin', 'ok', '', 'operator user created: ' . $login );
+		return (int) $id;
+	}
+
+	/**
+	 * トークンの発行（フォームと、発行した直後の1回だけの表示）。秘密を含むので、POST の応答にだけ出す。
+	 *
+	 * @param list<\WP_User> $users
+	 */
+	private static function token_section( array $users, string $endpoint ): void {
+		echo '<h2>トークンを発行する</h2>';
+		echo '<p>発行したトークンを、Claude Code・Codex などの AI の MCP の設定に入れるだけでつながります。下に、そのまま貼れるコマンドが出ます。デモサイトで発行しておけば、デモサイトからコピーしたサイトでも、同じトークンが使えます（入口の URL だけサイトごとに変えます）。トークンは合鍵と同じです。漏れたら下の一覧で「止める」を押してください。</p>';
+
+		$result = null;
+		$error  = '';
+		if ( 'POST' === ( $_SERVER['REQUEST_METHOD'] ?? '' ) && isset( $_POST['scm_token'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing -- 下の guard で確認
+			self::guard( 'ship_content_mcp_issue_token' );
+			// phpcs:disable WordPress.Security.NonceVerification.Missing -- guard() で確認済み
+			$once_token = isset( $_POST['issue_token'] ) ? sanitize_key( wp_unslash( $_POST['issue_token'] ) ) : '';
+			$who        = isset( $_POST['user_id'] ) ? sanitize_key( wp_unslash( $_POST['user_id'] ) ) : '';
+			$label      = isset( $_POST['label'] ) ? sanitize_text_field( wp_unslash( $_POST['label'] ) ) : '';
+			$url        = isset( $_POST['url'] ) ? esc_url_raw( wp_unslash( $_POST['url'] ), array( 'http', 'https' ) ) : '';
+			$basic      = isset( $_POST['basic_auth'] ) ? trim( (string) wp_unslash( $_POST['basic_auth'] ) ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- パスワードは文字を変えない（形は下で確かめる）
+			// phpcs:enable
+			$once = 'ship_content_mcp_issued_' . md5( 'token' . $once_token );
+			$norm = ConnectionCode::normalize_url( '' === trim( $url ) ? $endpoint : $url, $endpoint );
+			if ( '' === $once_token || false !== get_transient( $once ) ) {
+				$error = 'このフォームからは発行済みです（再読み込みでは発行しません）。もう一度発行するときは、「接続」タブを開き直してください。';
+			} elseif ( '' === $norm ) {
+				$error = '入口の URL が違います（http:// か https:// で始め、「/wp-json/…」の部分は変えないでください）';
+			} elseif ( ! ConnectionCode::valid_basic_auth( $basic ) ) {
+				$error = 'Basic 認証は「ID:パスワード」の形で入れてください';
+			} else {
+				set_transient( $once, 1, DAY_IN_SECONDS );
+				try {
+					$user_id = 'new' === $who ? self::create_operator_user() : absint( $who );
+					if ( '' !== AccessGate::user_problem( $user_id ) ) {
+						throw new \InvalidArgumentException( 'このユーザーは MCP を使えません（専用の権限がない、または権限が強すぎます）' );
+					}
+					$issued = DeviceKeys::add_token( $user_id, $label, get_current_user_id() );
+					AuditLog::write( 'admin', 'ok', '', 'token issued for user #' . $user_id, array( 'key_id' => $issued['key_id'] ) );
+					$result = $issued + array(
+						'url'   => $norm,
+						'name'  => 'ship-' . ConnectionCode::default_name( $norm ),
+						'basic' => $basic,
+					);
+				} catch ( \InvalidArgumentException $e ) {
+					$error = $e->getMessage();
+				}
+			}
+		}
+		if ( '' !== $error ) {
+			echo '<div class="notice notice-error inline"><p>' . esc_html( $error ) . '</p></div>';
+		}
+		if ( is_array( $result ) ) {
+			$cmd = ConnectionCode::client_configs( $result['name'], $result['url'], $result['token'], $result['basic'] );
+			echo '<div class="notice notice-success inline" style="padding:12px 16px">';
+			echo '<p><strong>発行しました（鍵 ID ' . esc_html( $result['key_id'] ) . '）。この画面を閉じると、トークンは二度と表示されません。</strong>控えが要るときは、パスワード管理ソフトに入れてください。</p>';
+			$blocks = array(
+				array( 'scm-t-token', 'トークン', $result['token'], 1 ),
+				array( 'scm-t-claude', 'Claude Code：ターミナルに貼って実行（または Claude Code に「このコマンドを実行して」と頼む）', $cmd['claude_code'], 3 ),
+				array( 'scm-t-codex', 'Codex：ターミナルに貼って実行（設定ファイル ~/.codex/config.toml に足します）', $cmd['codex'], 6 ),
+				array( 'scm-t-json', 'ほかの AI（mcpServers の形の設定。Cursor など）', $cmd['json'], 9 ),
+			);
+			foreach ( $blocks as [ $id, $title, $text, $rows ] ) {
+				echo '<p style="margin:14px 0 4px"><strong>' . esc_html( $title ) . '</strong></p>';
+				echo '<textarea id="' . esc_attr( $id ) . '" class="large-text code" rows="' . (int) $rows . '" readonly onclick="this.select()">' . esc_textarea( $text ) . '</textarea>';
+				echo '<button type="button" class="button" onclick="var t=document.getElementById(\'' . esc_attr( $id ) . '\');t.select();if(navigator.clipboard){navigator.clipboard.writeText(t.value);}else{document.execCommand(\'copy\');}this.textContent=\'コピーしました\';">コピー</button>';
+			}
+			if ( DesktopExtension::available() ) {
+				echo '<p style="margin:14px 0 4px"><strong>Claude デスクトップアプリ（チャット）</strong>：このサイト用の拡張機能のファイルを PM に送り、PM はファイルを開いてトークンを貼ります（ファイルにトークンは入っていません）。</p>';
+				echo DesktopExtension::form( $result['url'], $result['basic'], '拡張機能（' . $result['name'] . '.mcpb）をダウンロード' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- form() でエスケープ済み
+			}
+			echo '<p class="description" style="margin-top:12px">デモサイトからコピーしたサイトで使うときは、上のコマンドの入口の URL（と名前）を、そのサイトのものに変えるだけです。トークンは同じです。</p>';
+			echo '</div>';
+		}
+
+		echo '<form method="post" action="' . esc_url( admin_url( 'options-general.php?page=' . self::SLUG . '&tab=keys' ) ) . '" autocomplete="off">';
+		wp_nonce_field( 'ship_content_mcp_issue_token' );
+		echo '<input type="hidden" name="scm_token" value="1"><input type="hidden" name="issue_token" value="' . esc_attr( strtolower( wp_generate_password( 24, false ) ) ) . '">';
+		echo '<table class="form-table" role="presentation">';
+		echo '<tr><th><label for="scm-token-user">ユーザー</label></th><td>' . self::user_select( 'scm-token-user', 'user_id', $users, true ) . '<p class="description">トークンで作った下書きは、このユーザーが作ったものになります。ふつうは「MCP 用のユーザー」1人で足ります。</p></td></tr>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- user_select でエスケープ済み
+		echo '<tr><th><label for="scm-token-label">名前</label></th><td><input id="scm-token-label" name="label" class="regular-text" maxlength="100" value="制作チーム"><p class="description">あとで「止める」ときに見分けるための名前です。</p></td></tr>';
+		echo '<tr><th><label for="scm-token-url">入口の URL</label></th><td><input id="scm-token-url" name="url" class="large-text code" value="' . esc_attr( $endpoint ) . '"><p class="description">コマンドに入れる入口です。https:// の入口があれば https:// に変えてもかまいません。「/wp-json/…」の部分は変えないでください。</p></td></tr>';
+		echo '<tr><th><label for="scm-token-basic">Basic 認証（ある場合だけ）</label></th><td><input id="scm-token-basic" name="basic_auth" class="regular-text code" autocomplete="off" placeholder="ID:パスワード"><p class="description">公開前で、サーバーの Basic 認証がかかっているサイトだけ。コマンドに入れるためだけに使い、サーバーには保存しません。</p></td></tr>';
+		echo '</table>';
+		submit_button( 'トークンを発行する', 'primary', 'submit', true );
+		echo '</form><hr>';
 	}
 
 	private static function tab_diagnostics(): void {
@@ -270,7 +396,7 @@ final class SettingsPage {
 			'post_types'   => array(),
 			'ip_allowlist' => preg_split( '/\R/', (string) wp_unslash( $_POST['ip_allowlist'] ?? '' ) ),
 		);
-		foreach ( array( 'enabled', 'disable_default_server', 'reject_privileged', 'auth_signature', 'auth_app_password', 'strip_metadata' ) as $k ) {
+		foreach ( array( 'enabled', 'disable_default_server', 'reject_privileged', 'auth_token', 'token_http', 'auth_signature', 'auth_app_password', 'strip_metadata' ) as $k ) {
 			$in[ $k ] = ! empty( $_POST[ $k ] );
 		}
 		$in['media_max_mb'] = isset( $_POST['media_max_mb'] ) ? absint( $_POST['media_max_mb'] ) : 20;
@@ -333,6 +459,18 @@ final class SettingsPage {
 		exit;
 	}
 
+	public static function handle_prelaunch(): void {
+		self::guard( 'ship_content_mcp_prelaunch' );
+		$count = DeviceKeys::revoke_all( get_current_user_id() );
+		$s            = Settings::get();
+		$s['enabled'] = false;
+		Settings::save( $s );
+		AuditLog::write( 'admin', 'ok', '', 'prelaunch cleanup: revoked ' . $count . ', disabled' );
+		set_transient( 'ship_content_mcp_notice_' . get_current_user_id(), 'トークン・鍵を ' . $count . ' 件止め、MCP を止めました。続けて「プラグイン」の画面で「Ship Content MCP」と「MCP Adapter」を無効にして削除してください。', 60 );
+		wp_safe_redirect( admin_url( 'options-general.php?page=' . self::SLUG . '&tab=keys&scm_notice=prelaunch' ) );
+		exit;
+	}
+
 	public static function handle_revoke_key(): void {
 		self::guard( 'ship_content_mcp_revoke_key' );
 		$key_id = isset( $_POST['key_id'] ) ? sanitize_key( wp_unslash( $_POST['key_id'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- guard() で確認済み
@@ -352,8 +490,8 @@ final class SettingsPage {
 	 * @param list<\WP_User> $users
 	 */
 	private static function issue_section( array $users, string $endpoint ): void {
-		echo '<h2>接続コードを発行する（おすすめ）</h2>';
-		echo '<p>PM のパソコン1台につき1つ発行し、PM に DM で渡します。PM はコードをコピーして、決まった一文を Claude に貼るだけで設定できます。コードは合鍵と同じです（持っている人は、その PM として下書きを作れます）。漏れたら下の一覧で「止める」を押してください。</p>';
+		echo '<h3>接続コードを発行する（中継プログラムの setup 用）</h3>';
+		echo '<p>PM のパソコン1台につき1つ発行します。中継プログラム（setup --clipboard）で設定します。コードは合鍵と同じです（持っている人は、その PM として下書きを作れます）。漏れたら下の一覧で「止める」を押してください。</p>';
 
 		$result = null;
 		$error  = '';
@@ -386,7 +524,7 @@ final class SettingsPage {
 			echo '<div class="notice notice-error inline"><p>' . esc_html( $error ) . '</p></div>';
 		}
 		if ( is_array( $result ) ) {
-			$message = $result['site'] . " の接続コードです。PM 向けの取説の手順で、お使いの AI に設定してください（Claude デスクトップのチャットを使う人は、一緒に送る拡張機能のファイルを開いて、このコードを貼ります）。\n"
+			$message = $result['site'] . " の接続コードです。中継プログラムの setup で設定してください。\n"
 				. "このコードは合鍵と同じです。ほかの人に渡したり、共有のチャンネルに貼ったりしないでください。\n"
 				. $result['code'];
 			echo '<div class="notice notice-success inline" style="padding:12px 16px">';
@@ -395,9 +533,6 @@ final class SettingsPage {
 			echo '<textarea id="scm-issued" class="large-text code" rows="5" readonly onclick="this.select()">' . esc_textarea( $message ) . '</textarea>';
 			echo '<p><button type="button" class="button button-primary" onclick="var t=document.getElementById(\'scm-issued\');t.select();if(navigator.clipboard){navigator.clipboard.writeText(t.value);}else{document.execCommand(\'copy\');}this.textContent=\'コピーしました\';">送る文をコピー</button></p>';
 			echo '<p class="description">入口：' . esc_html( $result['url'] ) . '　／　AI への登録の名前：ship-content-' . esc_html( $result['name'] ) . '</p>';
-			if ( DesktopExtension::available() ) {
-				echo '<p>Claude デスクトップのチャットを使う PM には、このサイト用の拡張機能のファイルも一緒に送ります（秘密は入っていません。同じサイトの PM には同じファイルでかまいません）。<br><a class="button" href="' . esc_url( DesktopExtension::download_url( $result['url'] ) ) . '">拡張機能（ship-content-' . esc_html( $result['name'] ) . '.mcpb）をダウンロード</a></p>';
-			}
 			echo '</div>';
 		}
 
@@ -422,18 +557,6 @@ final class SettingsPage {
 		echo '</table>';
 		submit_button( '接続コードを発行する', 'primary', 'submit', true );
 		echo '</form>';
-		if ( DesktopExtension::available() ) {
-			echo '<h3>Claude デスクトップ用の拡張機能（このサイト用）</h3>';
-			echo '<p class="description">Claude デスクトップのチャットを使う PM に、接続コードと一緒に送るファイルです。秘密は入っていないので、同じサイトの PM には同じファイルでかまいません。名前は入口の URL から決まるので、接続コードと同じ入口を選んでください。</p>';
-			echo '<form method="get" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '"><input type="hidden" name="action" value="' . esc_attr( DesktopExtension::ACTION ) . '">';
-			wp_nonce_field( DesktopExtension::ACTION, '_wpnonce', false );
-			echo '<input name="url" class="large-text code" value="' . esc_attr( $endpoint ) . '" aria-label="入口の URL"> ';
-			submit_button( '拡張機能をダウンロード', 'secondary', 'submit', false );
-			echo '</form>';
-		} else {
-			echo '<p class="description">このサーバーでは、Claude デスクトップ用の拡張機能のファイルを作れません（PHP の ZipArchive がありません）。</p>';
-		}
-		echo '<hr>';
 	}
 
 	// ---- 部品 -------------------------------------------------------------
@@ -527,8 +650,14 @@ final class SettingsPage {
 			'policies_saved' => array( 'success', '制作方針を保存しました（版が上がりました）。' ),
 			'unchanged'      => array( 'info', '変更はありませんでした。' ),
 			'key_added'      => array( 'success', '端末の鍵を登録しました。' ),
-			'key_revoked'    => array( 'success', '鍵を止めました。' ),
+			'key_revoked'    => array( 'success', '止めました。' ),
 		);
+		if ( 'prelaunch' === $code ) {
+			$msg = (string) get_transient( 'ship_content_mcp_notice_' . get_current_user_id() );
+			delete_transient( 'ship_content_mcp_notice_' . get_current_user_id() );
+			echo '<div class="notice notice-success"><p>' . esc_html( '' !== $msg ? $msg : 'MCP を止めました。' ) . ' <a href="' . esc_url( admin_url( 'plugins.php' ) ) . '">プラグインの画面へ</a></p></div>';
+			return;
+		}
 		if ( 'error' === $code ) {
 			$msg = (string) get_transient( 'ship_content_mcp_notice_' . get_current_user_id() );
 			delete_transient( 'ship_content_mcp_notice_' . get_current_user_id() );

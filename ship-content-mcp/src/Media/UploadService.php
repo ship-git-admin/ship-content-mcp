@@ -179,17 +179,9 @@ final class UploadService {
 		if ( ! $progress['complete'] ) {
 			throw new DomainError( 'MEDIA-001', 'chunks missing', true, 'まだ届いていない分割があります：' . implode( ', ', $progress['missing'] ) );
 		}
-		$parent = (int) ( $in['attach_to_post_id'] ?? 0 );
-		if ( $parent > 0 ) {
-			$p = get_post( $parent );
-			if ( ! $p instanceof \WP_Post || 'draft' !== $p->post_status || $p->post_type !== $s['post_type'] || ! PostTypes::writable( $p->post_type ) ) {
-				throw new DomainError( 'POST-001', 'attach_to_post_id not an editable draft', false, 'attach_to_post_id は、同じ投稿タイプの下書きにしてください' );
-			}
-		}
+		$parent = self::check_parent( (int) ( $in['attach_to_post_id'] ?? 0 ), (string) $s['post_type'] );
 
 		require_once ABSPATH . 'wp-admin/includes/file.php';
-		require_once ABSPATH . 'wp-admin/includes/media.php';
-		require_once ABSPATH . 'wp-admin/includes/image.php';
 		$tmp = wp_tempnam( (string) $s['filename'] );
 		try {
 			$fh = ( '' !== (string) $tmp ) ? fopen( $tmp, 'wb' ) : false; // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen
@@ -206,39 +198,76 @@ final class UploadService {
 			if ( filesize( $tmp ) !== (int) $s['size'] || ! hash_equals( (string) $s['sha256'], (string) hash_file( 'sha256', $tmp ) ) ) {
 				throw new DomainError( 'MEDIA-001', 'whole file size/hash mismatch', false, '写真全体の大きさか SHA-256 が、最初に申告したものと合いません' );
 			}
-			$check = self::inspect( $tmp, (string) $s['mime'] );
-			$strip = array(
-				'gps_found' => false,
-				'removed'   => false,
-				'engine'    => '',
-			);
-			$warnings = array( self::PUBLIC_NOTICE );
-			if ( Settings::get()['strip_metadata'] ) {
-				$strip = MetadataStripper::strip( $tmp, (string) $s['mime'] );
-			} elseif ( MetadataStripper::has_gps( $tmp, (string) $s['mime'] ) ) {
-				$warnings[] = 'この写真には位置情報（GPS）が入っています（設定でメタデータを消さないことになっています）。';
-			}
-			$title = isset( $in['title'] ) ? mb_substr( sanitize_text_field( (string) $in['title'] ), 0, 200 ) : '';
-			$id    = media_handle_sideload(
-				array(
-					'name'     => (string) $s['filename'],
-					'tmp_name' => $tmp,
-				),
-				$parent,
-				'' !== $title ? $title : null,
-				array( 'post_author' => get_current_user_id() )
-			);
-			if ( is_wp_error( $id ) ) {
-				throw new DomainError( 'MEDIA-001', 'media_handle_sideload: ' . $id->get_error_code(), false, '写真をメディアに登録できませんでした（' . $id->get_error_message() . '）' );
-			}
-			$tmp = '';
-			$id  = (int) $id;
+			$stored = $this->store( $tmp, (string) $s['filename'], (string) $s['mime'], (string) $s['post_type'], $parent, $in, (string) $s['sha256'] );
+			$tmp    = '';
 		} finally {
 			if ( '' !== $tmp && file_exists( $tmp ) ) {
 				wp_delete_file( $tmp );
 			}
 		}
+		$wpdb->update( Installer::table( 'uploads' ), array( 'status' => 'done', 'attachment_id' => $stored['id'], 'result' => (string) wp_json_encode( $stored['data'] ) ), array( 'session_id' => $s['session_id'] ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$wpdb->delete( Installer::table( 'chunks' ), array( 'session_id' => $s['session_id'] ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		return array(
+			'data'     => $stored['data'],
+			'warnings' => $stored['warnings'],
+			'log'      => array( 'post_id' => $stored['id'] ),
+		);
+	}
 
+	/**
+	 * 添付先（任意）が、同じ投稿タイプの書き込める下書きか。
+	 *
+	 * @throws DomainError
+	 */
+	public static function check_parent( int $parent, string $post_type ): int {
+		if ( $parent <= 0 ) {
+			return 0;
+		}
+		$p = get_post( $parent );
+		if ( ! $p instanceof \WP_Post || 'draft' !== $p->post_status || $p->post_type !== $post_type || ! PostTypes::writable( $p->post_type ) ) {
+			throw new DomainError( 'POST-001', 'attach_to_post_id not an editable draft', false, 'attach_to_post_id は、同じ投稿タイプの下書きにしてください' );
+		}
+		return $parent;
+	}
+
+	/**
+	 * 一時ファイルの写真を確かめ、メタデータを消して、メディアに登録する（転送の仕上げと、アップロード用 URL の両方から使う）。
+	 * 成功したら一時ファイルは WordPress が移す。失敗したら呼び出し側で消す。
+	 *
+	 * @param array<string,mixed> $in title?, alt?
+	 * @return array{id:int,data:array<string,mixed>,warnings:list<string>}
+	 * @throws DomainError
+	 */
+	public function store( string $tmp, string $filename, string $mime, string $post_type, int $parent, array $in, string $sha ): array {
+		require_once ABSPATH . 'wp-admin/includes/file.php';
+		require_once ABSPATH . 'wp-admin/includes/media.php';
+		require_once ABSPATH . 'wp-admin/includes/image.php';
+		self::inspect( $tmp, $mime );
+		$strip    = array(
+			'gps_found' => false,
+			'removed'   => false,
+			'engine'    => '',
+		);
+		$warnings = array( self::PUBLIC_NOTICE );
+		if ( Settings::get()['strip_metadata'] ) {
+			$strip = MetadataStripper::strip( $tmp, $mime );
+		} elseif ( MetadataStripper::has_gps( $tmp, $mime ) ) {
+			$warnings[] = 'この写真には位置情報（GPS）が入っています（設定でメタデータを消さないことになっています）。';
+		}
+		$title = isset( $in['title'] ) ? mb_substr( sanitize_text_field( (string) $in['title'] ), 0, 200 ) : '';
+		$id    = media_handle_sideload(
+			array(
+				'name'     => $filename,
+				'tmp_name' => $tmp,
+			),
+			$parent,
+			'' !== $title ? $title : null,
+			array( 'post_author' => get_current_user_id() )
+		);
+		if ( is_wp_error( $id ) ) {
+			throw new DomainError( 'MEDIA-001', 'media_handle_sideload: ' . $id->get_error_code(), false, '写真をメディアに登録できませんでした（' . $id->get_error_message() . '）' );
+		}
+		$id = (int) $id;
 		if ( isset( $in['alt'] ) ) {
 			update_post_meta( $id, '_wp_attachment_image_alt', mb_substr( sanitize_text_field( (string) $in['alt'] ), 0, 300 ) );
 		}
@@ -254,28 +283,30 @@ final class UploadService {
 				)
 			)
 		);
-		update_post_meta( $id, self::META_SHA256, (string) $s['sha256'] );
-		$test = PostTypes::testing( (string) $s['post_type'] );
+		update_post_meta( $id, self::META_SHA256, $sha );
+		$test = PostTypes::testing( $post_type );
 		if ( $test ) {
 			update_post_meta( $id, DraftService::META_TEST, '1' );
 		}
-		$data = self::attachment_info( $id ) + array(
-			'metadata_removed'  => $strip['removed'],
-			'gps_removed'       => $strip['gps_found'] && $strip['removed'],
-			'attached_to'       => $parent,
-			'test_marked'       => $test,
-			'idempotent_replay' => false,
-		);
 		if ( $strip['gps_found'] && $strip['removed'] ) {
 			$warnings[] = '写真に入っていた位置情報（GPS）を消しました。';
 		}
-		$wpdb->update( Installer::table( 'uploads' ), array( 'status' => 'done', 'attachment_id' => $id, 'result' => (string) wp_json_encode( $data ) ), array( 'session_id' => $s['session_id'] ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
-		$wpdb->delete( Installer::table( 'chunks' ), array( 'session_id' => $s['session_id'] ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
 		return array(
-			'data'     => $data,
+			'id'       => $id,
+			'data'     => self::attachment_info( $id ) + array(
+				'metadata_removed'  => $strip['removed'],
+				'gps_removed'       => $strip['gps_found'] && $strip['removed'],
+				'attached_to'       => $parent,
+				'test_marked'       => $test,
+				'idempotent_replay' => false,
+			),
 			'warnings' => $warnings,
-			'log'      => array( 'post_id' => $id ),
 		);
+	}
+
+	/** 同じ写真（SHA-256）がすでに MCP で登録されていれば、その添付 ID（なければ 0）。 */
+	public static function existing( string $sha ): int {
+		return self::find_existing( $sha );
 	}
 
 	/**

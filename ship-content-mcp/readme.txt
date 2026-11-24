@@ -3,7 +3,7 @@ Contributors: shipinc
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.7.0
+Stable tag: 0.8.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -17,6 +17,9 @@ WordPress 側では AI を呼びません。公開・予約・削除・ACF の�
 読み取り（投稿タイプ・制作方針・入力欄の構造・記事）、下書きの検証・作成・修正、写真の分割転送のツールがあります。
 
 == Changelog ==
+
+= 0.8.0 =
+* トークン：管理画面で発行し、Claude Code・Codex などの MCP の設定に入れるだけでつながる（中継プログラム不要）。デモサイトで発行すれば、コピーしたサイトでも同じトークンが使える。写真はアップロード用 URL に AI が curl で送る。公開の前の片付け（すべて止める）と、削除時のデータの後片付け。
 
 = 0.7.0 =
 * Claude デスクトップアプリ（チャット）用の拡張機能（.mcpb）を、管理画面からサイトごとにダウンロードできる。PM は開いて接続コードを貼るだけ（Node.js 不要）。ほかの AI 向けの設定の表示。

@@ -13,3 +13,4 @@ require __DIR__ . '/../../ship-content-mcp/src/Security/SignatureCodec.php';
 require __DIR__ . '/../../ship-content-mcp/src/Security/IpRules.php';
 require __DIR__ . '/../../ship-content-mcp/src/Security/ConnectionCode.php';
 require __DIR__ . '/../../ship-content-mcp/src/Admin/DesktopExtension.php';
+require __DIR__ . '/../../ship-content-mcp/src/Security/DeviceKeys.php';

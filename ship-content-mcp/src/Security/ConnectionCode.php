@@ -84,6 +84,43 @@ final class ConnectionCode {
 		return $url;
 	}
 
+	/**
+	 * トークンで直接つなぐための、AI ごとの設定（そのまま貼れる形）。WordPress に依存しない（試験からも使う）。
+	 *
+	 * @return array{claude_code:string,codex:string,json:string}
+	 */
+	public static function client_configs( string $name, string $url, string $token, string $basic_auth ): array {
+		$headers = array( 'X-Ship-MCP-Token' => $token );
+		if ( '' !== $basic_auth ) {
+			$headers['Authorization'] = 'Basic ' . base64_encode( $basic_auth );
+		}
+		$q      = static fn( string $v ): string => "'" . str_replace( "'", "'\\''", $v ) . "'";
+		$claude = 'claude mcp add --transport http --scope user ' . $q( $name ) . ' ' . $q( $url );
+		$pairs  = array();
+		foreach ( $headers as $k => $v ) {
+			$claude .= ' --header ' . $q( $k . ': ' . $v );
+			$pairs[] = json_encode( $k, JSON_UNESCAPED_SLASHES ) . ' = ' . json_encode( $v, JSON_UNESCAPED_SLASHES );
+		}
+		$codex = "cat >> ~/.codex/config.toml <<'EOF'\n\n[mcp_servers." . $name . "]\nurl = " . json_encode( $url, JSON_UNESCAPED_SLASHES ) . "\nhttp_headers = { " . implode( ', ', $pairs ) . " }\nEOF";
+		$json  = (string) json_encode(
+			array(
+				'mcpServers' => array(
+					$name => array(
+						'type'    => 'http',
+						'url'     => $url,
+						'headers' => $headers,
+					),
+				),
+			),
+			JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+		);
+		return array(
+			'claude_code' => $claude,
+			'codex'       => $codex,
+			'json'        => $json,
+		);
+	}
+
 	public static function valid_basic_auth( string $v ): bool {
 		return '' === $v || ( str_contains( $v, ':' ) && 1 !== preg_match( '/[\x00-\x1f]/', $v ) && strlen( $v ) <= 256 );
 	}

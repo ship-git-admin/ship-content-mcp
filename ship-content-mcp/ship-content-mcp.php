@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Ship Content MCP
  * Description:       許可した投稿タイプの下書きを、社内 PM の AI エージェントから MCP で作成・修正するためのプラグインです。WordPress 公式の MCP Adapter（別プラグイン）が必要です。WordPress 側では AI を呼びません。
- * Version:           0.7.0
+ * Version:           0.8.0
  * Requires at least: 6.9
  * Requires PHP:      8.1
  * Author:            Ship Inc.
@@ -18,7 +18,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'SHIP_CONTENT_MCP_VERSION', '0.7.0' );
+define( 'SHIP_CONTENT_MCP_VERSION', '0.8.0' );
 define( 'SHIP_CONTENT_MCP_FILE', __FILE__ );
 define( 'SHIP_CONTENT_MCP_DIR', __DIR__ );
 
@@ -49,6 +49,7 @@ spl_autoload_register(
 register_activation_hook( __FILE__, array( 'ShipContentMcp\\Core\\Installer', 'activate' ) );
 
 // 署名の認証は、ほかのコードが現在のユーザーを決める前に付けておく（plugins_loaded では遅いことがある）。
+ShipContentMcp\Security\TokenAuth::early_hooks();
 ShipContentMcp\Security\SignatureAuth::early_hooks();
 
 add_action( 'plugins_loaded', array( 'ShipContentMcp\\Core\\Plugin', 'boot' ) );

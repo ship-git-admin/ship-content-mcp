@@ -1,6 +1,6 @@
 <?php
 /**
- * WP-CLI：wp ship-content-mcp status|selftest|enable|disable|post-type <name> <status>|keys [list|issue|add|revoke]|cleanup-tests [--yes]
+ * WP-CLI：wp ship-content-mcp status|selftest|enable|disable|post-type <name> <status>|keys [list|token|issue|add|revoke]|prelaunch [--yes]|cleanup-tests [--yes]
  *
  * selftest は読み取りが中心。書くのは、使い捨て番号の表への試験の行だけ（最後に消す）。ユーザー・投稿・鍵は作らない。
  *
@@ -222,27 +222,49 @@ final class Command {
 	}
 
 	/**
+	 * 公開の前に片付ける：発行したトークン・鍵をすべて止め、MCP を止める。そのあとプラグインを削除する（wp plugin delete ship-content-mcp mcp-adapter --deactivate）。
+	 *
+	 * ## OPTIONS
+	 *
+	 * [--yes]
+	 * : 確認なしで行う
+	 *
+	 * @param list<string>         $args
+	 * @param array<string,string> $assoc
+	 */
+	public function prelaunch( array $args, array $assoc ): void {
+		unset( $args );
+		\WP_CLI::confirm( '発行したトークン・鍵をすべて止め、MCP を止めます。よろしいですか？', $assoc );
+		$count        = DeviceKeys::revoke_all( get_current_user_id() );
+		$s            = Settings::get();
+		$s['enabled'] = false;
+		Settings::save( $s );
+		AuditLog::write( 'admin', 'ok', '', 'prelaunch cleanup via cli: revoked ' . $count . ', disabled', array( 'auth' => 'cli' ) );
+		\WP_CLI::success( 'トークン・鍵を ' . $count . ' 件止め、MCP を止めました。続けて：wp plugin delete ship-content-mcp mcp-adapter --deactivate' );
+	}
+
+	/**
 	 * 端末の鍵の一覧・登録・停止（公開鍵は指紋だけを表示。秘密鍵は受け付けない）。
 	 *
 	 * ## OPTIONS
 	 *
 	 * [<action>]
-	 * : list / issue / add / revoke（issue は接続コードの発行。コードはこの1回だけ表示する）
+	 * : list / token / issue / add / revoke（token はトークンの発行、issue は接続コードの発行。どちらもこの1回だけ表示する）
 	 * ---
 	 * default: list
 	 * ---
 	 *
 	 * [--for-user=<id>]
-	 * : issue・add のとき：鍵を使うユーザーの ID（Content MCP Operator のユーザー）
+	 * : token・issue・add のとき：使うユーザーの ID（Content MCP Operator のユーザー。token では new で MCP 用のユーザーを作る）
 	 *
 	 * [--label=<label>]
 	 * : issue・add のとき：端末の名前
 	 *
 	 * [--entry-url=<url>]
-	 * : issue のとき：PM に渡す入口（既定はこのサイトの入口。https の入口に変えるときに使う。パスは変えない。WP-CLI の --url とは別）
+	 * : token・issue のとき：コマンドに入れる入口（既定はこのサイトの入口。https の入口に変えるときに使う。パスは変えない。WP-CLI の --url とは別）
 	 *
 	 * [--basic-auth-stdin]
-	 * : issue のとき：サーバーの Basic 認証（ID:パスワード）を標準入力から読んで、コードに入れる（コマンドの履歴に残さないため）
+	 * : token・issue のとき：サーバーの Basic 認証（ID:パスワード）を標準入力から読んで、コマンド・コードに入れる（コマンドの履歴に残さないため。サーバーには保存しない）
 	 *
 	 * [--public-key=<base64>]
 	 * : add のとき：中継プログラムの keygen が表示した公開鍵
@@ -255,6 +277,60 @@ final class Command {
 	 */
 	public function keys( array $args, array $assoc ): void {
 		$action = $args[0] ?? 'list';
+		if ( 'token' === $action ) {
+			$who = (string) ( $assoc['for-user'] ?? '' );
+			if ( 'new' === $who ) {
+				$login = 'mcp-operator';
+				for ( $i = 2; username_exists( $login ) && $i < 100; $i++ ) {
+					$login = 'mcp-operator-' . $i;
+				}
+				$created = wp_insert_user(
+					array(
+						'user_login'   => $login,
+						'user_pass'    => wp_generate_password( 40, true, true ),
+						'display_name' => 'MCP 用ユーザー',
+						'role'         => Consts::ROLE,
+					)
+				);
+				if ( is_wp_error( $created ) ) {
+					\WP_CLI::error( 'MCP 用のユーザーを作れませんでした：' . $created->get_error_message() );
+				}
+				$user_id = (int) $created;
+				AuditLog::write( 'admin', 'ok', '', 'operator user created via cli: ' . $login, array( 'auth' => 'cli' ) );
+				\WP_CLI::log( 'MCP 用のユーザーを作りました：' . $login . '（ID ' . $user_id . '）' );
+			} else {
+				$user_id = (int) $who;
+			}
+			$why = AccessGate::user_problem( $user_id );
+			if ( '' !== $why ) {
+				\WP_CLI::error( 'このユーザーは MCP を使えません：' . $why );
+			}
+			$endpoint = \ShipContentMcp\MCP\Server::endpoint();
+			$url      = ConnectionCode::normalize_url( '' === (string) ( $assoc['entry-url'] ?? '' ) ? $endpoint : (string) $assoc['entry-url'], $endpoint );
+			if ( '' === $url ) {
+				\WP_CLI::error( '入口の URL が違います（パスは ' . (string) wp_parse_url( $endpoint, PHP_URL_PATH ) . ' のままにしてください）' );
+			}
+			$basic = isset( $assoc['basic-auth-stdin'] ) ? trim( (string) stream_get_contents( STDIN ) ) : '';
+			if ( ! ConnectionCode::valid_basic_auth( $basic ) ) {
+				\WP_CLI::error( 'Basic 認証は「ID:パスワード」の形にしてください' );
+			}
+			try {
+				$t = DeviceKeys::add_token( $user_id, (string) ( $assoc['label'] ?? '' ), get_current_user_id() );
+			} catch ( \InvalidArgumentException $e ) {
+				\WP_CLI::error( $e->getMessage() );
+			}
+			AuditLog::write( 'admin', 'ok', '', 'token issued via cli for user #' . $user_id, array( 'key_id' => $t['key_id'], 'auth' => 'cli' ) );
+			$cfg = ConnectionCode::client_configs( 'ship-' . ConnectionCode::default_name( $url ), $url, $t['token'], $basic );
+			\WP_CLI::log( 'SHIP_MCP_KEY_ID=' . $t['key_id'] );
+			\WP_CLI::log( 'トークン（この1回だけ表示。合鍵と同じなので、共有のチャンネルに貼らない）：' );
+			\WP_CLI::line( $t['token'] );
+			\WP_CLI::log( '--- Claude Code ---' );
+			\WP_CLI::log( $cfg['claude_code'] );
+			\WP_CLI::log( '--- Codex ---' );
+			\WP_CLI::log( $cfg['codex'] );
+			\WP_CLI::success( '発行しました' );
+			return;
+		}
 		if ( 'issue' === $action ) {
 			$user_id = (int) ( $assoc['for-user'] ?? 0 );
 			$why     = AccessGate::user_problem( $user_id );
@@ -300,7 +376,7 @@ final class Command {
 			return;
 		}
 		if ( 'list' !== $action ) {
-			\WP_CLI::error( 'list / issue / add / revoke のどれかを指定してください' );
+			\WP_CLI::error( 'list / token / issue / add / revoke のどれかを指定してください' );
 		}
 		$rows = array();
 		foreach ( DeviceKeys::all() as $r ) {
@@ -309,7 +385,8 @@ final class Command {
 				'key_id'      => $r['key_id'],
 				'user_id'     => $r['user_id'],
 				'label'       => $r['label'],
-				'fingerprint' => null === $raw ? '?' : SignatureCodec::fingerprint( $raw ),
+				'type'        => DeviceKeys::is_token( $r ) ? 'token' : 'key',
+				'fingerprint' => DeviceKeys::is_token( $r ) ? '-' : ( null === $raw ? '?' : SignatureCodec::fingerprint( $raw ) ),
 				'created_at'  => $r['created_at'],
 				'last_used'   => $r['last_used_at'] ?? '',
 				'revoked_at'  => $r['revoked_at'] ?? '',
@@ -433,6 +510,10 @@ final class Command {
 		$code35 = ConnectionCode::encode( array( 'v' => 1, 'url' => \ShipContentMcp\MCP\Server::endpoint(), 'key_id' => 'k0123456789abcdef', 'seed' => base64_encode( $seed35 ), 'server_key' => $site_pk ? base64_encode( $site_pk ) : '' ) );
 		$back35 = ConnectionCode::decode( "例\n" . $code35 . "\n" );
 		$this->check( 'T35 接続コード：読み戻せて、種から同じ公開鍵ができる', is_array( $back35 ) && sodium_crypto_sign_publickey( sodium_crypto_sign_seed_keypair( (string) base64_decode( (string) $back35['seed'], true ) ) ) === sodium_crypto_sign_publickey( $pair35 ) && '' !== ConnectionCode::normalize_url( \ShipContentMcp\MCP\Server::endpoint(), \ShipContentMcp\MCP\Server::endpoint() ) );
+		$t36 = 'smcp_k0123456789abcdef_' . rtrim( strtr( base64_encode( random_bytes( 32 ) ), '+/', '-_' ), '=' );
+		$p36 = DeviceKeys::parse_token( $t36 );
+		$this->check( 'T36 トークン：形を読めて、ハッシュが64文字以内で、違う秘密では合わない', null !== $p36 && strlen( DeviceKeys::token_hash( $p36['secret'] ) ) <= 64 && ! hash_equals( DeviceKeys::token_hash( $p36['secret'] ), DeviceKeys::token_hash( $p36['secret'] . 'x' ) ) && 'bad_format' === DeviceKeys::verify_token( 'smcp_bad' ) && 'unknown_key' === DeviceKeys::verify_token( $t36 ) );
+		$this->check( 'T37 写真のアップロード用 URL の入口がある', isset( rest_get_server()->get_routes()['/' . \ShipContentMcp\Core\Consts::NS . '/upload/(?P<ticket>[a-f0-9]{48})'] ) );
 
 		// --- 投稿タイプ・方針・ACF ---
 		$this->check( 'T40 固定ページ・メディアは候補にならない', ! isset( PostTypes::candidates()['page'] ) && ! isset( PostTypes::candidates()['attachment'] ) );

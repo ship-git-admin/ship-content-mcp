@@ -17,6 +17,7 @@
         "get-creation-policy",
         "search-posts",
         "get-post",
+        "get-upload-url",
         "prepare-upload",
         "upload-chunk",
         "finish-upload",
