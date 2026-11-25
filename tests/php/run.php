@@ -213,6 +213,12 @@ $check(
 	&& str_contains( $abil_src, "'policy' => self::saved_policy( \$post_id )," ) && isset( \ShipContentMcp\Core\DomainError::FIX['POLICY-002'] ) && 'ai' === ( new \ShipContentMcp\Core\DomainError( 'POLICY-002' ) )->who_fixes()
 	&& str_contains( $steps, 'policy_version' ) && str_contains( $ins, 'policy_version' )
 );
+$pt_src = (string) file_get_contents( __DIR__ . '/../../ship-content-mcp/src/Content/PostTypes.php' );
+$check(
+	'分類の語の一覧を最初のツールで返し、公開される分類が空なら知らせる（0.9.12）',
+	str_contains( $pt_src, 'public static function taxonomies_with_terms(' ) && str_contains( $abil_src, "'taxonomies' => PostTypes::taxonomies_with_terms( \$name )," )
+	&& 3 === substr_count( $abil_src, 'self::taxonomy_warnings(' ) && str_contains( $steps, 'taxonomies[].terms' ) && str_contains( $steps, 'taxonomy_terms' )
+);
 $us_src = (string) file_get_contents( __DIR__ . '/../../ship-content-mcp/src/Media/UploadService.php' );
 $check( '写真の URL から取り込む：wp_safe_remote_get・http(s) だけ・大きさの上限・中身で判定・ホスト名だけ記録', str_contains( $us_src, 'wp_safe_remote_get(' ) && str_contains( $us_src, "array( 'http', 'https' )" ) && str_contains( $us_src, 'wp_http_validate_url( $url )' ) && str_contains( $us_src, "'limit_response_size' => \$max + 1" ) && str_contains( $us_src, 'ImageSniff::sniff( substr( $body, 0, 16 ) )' ) && in_array( 'ship-content/import-image-url', \ShipContentMcp\MCP\Abilities::TOOLS, true ) );
 

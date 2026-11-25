@@ -127,6 +127,44 @@ final class PostTypes {
 		return $out;
 	}
 
+	/** list-post-types で返す語の数の上限（分類ごと）。 */
+	public const TERMS_MAX = 300;
+
+	/**
+	 * 分類と、選べる語の一覧（list-post-types の返事。AI が分類を付けられるように。0.9.12）。
+	 *
+	 * @return list<array<string,mixed>>
+	 */
+	public static function taxonomies_with_terms( string $post_type ): array {
+		$out = array();
+		foreach ( self::taxonomies( $post_type ) as $row ) {
+			$tax   = get_taxonomy( $row['name'] );
+			$terms = get_terms(
+				array(
+					'taxonomy'   => $row['name'],
+					'hide_empty' => false,
+					'number'     => self::TERMS_MAX + 1,
+					'orderby'    => 'term_order',
+				)
+			);
+			$list  = array();
+			foreach ( is_array( $terms ) ? $terms : array() as $t ) {
+				$list[] = array(
+					'id'     => (int) $t->term_id,
+					'name'   => (string) $t->name,
+					'parent' => (int) $t->parent,
+				);
+			}
+			$row['public'] = $tax ? (bool) $tax->public : false;
+			$row['terms']  = array_slice( $list, 0, self::TERMS_MAX );
+			if ( count( $list ) > self::TERMS_MAX ) {
+				$row['terms_truncated'] = true;
+			}
+			$out[] = $row;
+		}
+		return $out;
+	}
+
 	/**
 	 * @return list<string>
 	 */

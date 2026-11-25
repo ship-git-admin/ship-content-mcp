@@ -47,9 +47,10 @@ final class Abilities {
 	/** 最初に呼ぶ list-post-types の返事に付ける、全部の手順（AI がツールを探さなくても、写真まで進めるように。0.9.5）。 */
 	public const STEPS = array(
 		'1. この返事の data.creation_policy（サイト管理者の制作方針）を読む。記事の書き方・文字数・写真の並べ方は、これに従う（迷ったら PM に確認）。次に get-acf-schema で入力欄を読む（参考にする記事は search-posts・get-post）。',
-		'2. 写真・画像があれば、1枚ずつメディアに登録する。誰でも開ける写真の URL があれば import-image-url。手元のファイルは get-upload-url（返ってきた curl を実行）。コマンドでネットワークにつなげないときは prepare-upload → upload-chunk → finish-upload（返事の how_to_send のコマンドの出力をそのまま渡す。base64 を自分で書き写さない）。返った attachment_id を、画像の欄や featured_media に入れる。うまくいかないときは、この返事の meta.photos（写真の出どころ別の手順・取り込めないとき）に従う。',
-		'3. validate-draft で確かめ、制作方針に合っているかも自分で確かめて、PM に見せてから、create-draft（新しい下書き）か update-draft（下書きを直す）で保存する。保存には policy_version（creation_policy.version）を付ける。方針が変わっていると保存されない（POLICY-002）ので、get-creation-policy で読み直し、方針に合わせてから送り直す。',
-		'4. 保存した後は get-post で読み戻す。',
+		'2. 分類（カテゴリなど）を決める。post_types[].taxonomies[].terms の語（id）から、制作方針と記事の中身に合うものを選び、create-draft の taxonomies（kind=taxonomy_terms）に入れる。公開されない分類（public=false）は、制作方針に書いてなければ付けない。合う語がなければ PM に聞く（新しい語は作れない）。',
+		'3. 写真・画像があれば、1枚ずつメディアに登録する。誰でも開ける写真の URL があれば import-image-url。手元のファイルは get-upload-url（返ってきた curl を実行）。コマンドでネットワークにつなげないときは prepare-upload → upload-chunk → finish-upload（返事の how_to_send のコマンドの出力をそのまま渡す。base64 を自分で書き写さない）。返った attachment_id を、画像の欄や featured_media に入れる。うまくいかないときは、この返事の meta.photos（写真の出どころ別の手順・取り込めないとき）に従う。',
+		'4. validate-draft で確かめ、制作方針に合っているかも自分で確かめて、PM に見せてから、create-draft（新しい下書き）か update-draft（下書きを直す）で保存する。保存には policy_version（creation_policy.version）を付ける。方針が変わっていると保存されない（POLICY-002）ので、get-creation-policy で読み直し、方針に合わせてから送り直す。',
+		'5. 保存した後は get-post で読み戻す。',
 		'ツールが見つからない・使えないときも、WordPress の管理画面・ログイン・ブラウザで代わりをしない。',
 	);
 
@@ -280,7 +281,7 @@ final class Abilities {
 		self::add(
 			self::LIST_POST_TYPES,
 			'使える投稿タイプの一覧',
-			'Start here（最初に呼ぶ。制作に入る前に必ず）。このサイトで MCP から下書きを作ってよい投稿タイプと、その分類・状態・書き込めるか（writable）、サイト管理者の制作方針（data.creation_policy：書き方・文字数・写真の並べ方など）を返す。記事はこの制作方針に従って書く。返事の meta.steps に、写真の登録を含む全部の手順がある。次に get-acf-schema を呼ぶ。',
+			'Start here（最初に呼ぶ。制作に入る前に必ず）。このサイトで MCP から下書きを作ってよい投稿タイプと、その分類（選べる語の一覧 terms つき）・状態・書き込めるか（writable）、サイト管理者の制作方針（data.creation_policy：書き方・文字数・写真の並べ方など）を返す。記事はこの制作方針に従って書く。返事の meta.steps に、写真の登録を含む全部の手順がある。次に get-acf-schema を呼ぶ。',
 			array(
 				'type'                 => 'object',
 				'additionalProperties' => false,
@@ -672,7 +673,7 @@ final class Abilities {
 				'label'      => $obj ? (string) $obj->label : $name,
 				'status'     => PostTypes::status( $name ),
 				'writable'   => PostTypes::writable( $name ),
-				'taxonomies' => PostTypes::taxonomies( $name ),
+				'taxonomies' => PostTypes::taxonomies_with_terms( $name ),
 			);
 		}
 		$warnings = array();
@@ -836,11 +837,45 @@ final class Abilities {
 		}
 		unset( $draft['policy_version'] );
 		$out = self::with_policy_version( ( new DraftService() )->validate( (string) ( $input['operation'] ?? '' ), $draft ) );
+		$out['warnings'] = (array) ( $out['warnings'] ?? array() );
 		if ( ! $given ) {
-			$out['warnings']   = (array) ( $out['warnings'] ?? array() );
 			$out['warnings'][] = '保存（create-draft・update-draft）には policy_version が要ります（今の制作方針は版 ' . Policies::version() . '。list-post-types の data.creation_policy）。';
 		}
+		$out['warnings'] = array_merge( $out['warnings'], self::taxonomy_warnings( (string) ( $draft['post_type'] ?? '' ), (int) ( $draft['post_id'] ?? 0 ), $draft ) );
 		return $out;
+	}
+
+	/**
+	 * 公開される分類が空のままなら知らせる（作成・修正の前後。0.9.12）。
+	 *
+	 * @param array<string,mixed> $in 送られた中身（taxonomies・changes の taxonomy_terms を見る）
+	 * @return list<string>
+	 */
+	public static function taxonomy_warnings( string $post_type, int $post_id, array $in ): array {
+		if ( '' === $post_type || ! in_array( $post_type, PostTypes::allowed(), true ) ) {
+			return array();
+		}
+		$given = array();
+		foreach ( array_merge( (array) ( $in['taxonomies'] ?? array() ), (array) ( $in['changes'] ?? array() ) ) as $row ) {
+			$row = (array) $row;
+			if ( 'taxonomy_terms' === ( $row['kind'] ?? '' ) && ! empty( $row['term_ids'] ) ) {
+				$given[ (string) ( $row['taxonomy'] ?? '' ) ] = true;
+			}
+		}
+		$empty = array();
+		foreach ( get_object_taxonomies( $post_type, 'objects' ) as $name => $tax ) {
+			if ( ! $tax->public || ! in_array( $name, PostTypes::taxonomy_names( $post_type ), true ) || ! empty( $given[ $name ] ) ) {
+				continue;
+			}
+			$has = $post_id > 0 ? wp_get_object_terms( $post_id, $name, array( 'fields' => 'ids' ) ) : array();
+			if ( ! is_array( $has ) || array() === $has ) {
+				$empty[] = (string) $tax->label;
+			}
+		}
+		if ( array() === $empty ) {
+			return array();
+		}
+		return array( '分類「' . implode( '」「', $empty ) . '」が空です（サイトの一覧や絞り込みに出にくくなります）。list-post-types の taxonomies の terms から、制作方針と記事に合う語を選んで、taxonomies（kind=taxonomy_terms）で付けてください。合う語がなければ PM に聞いてください。' );
 	}
 
 	/**
@@ -887,7 +922,9 @@ final class Abilities {
 	public static function create_draft( array $input ): array {
 		self::assert_policy_version( $input );
 		unset( $input['policy_version'] );
-		return self::with_policy_version( self::record_policy_version( ( new DraftService() )->create( $input ) ) );
+		$out             = self::with_policy_version( self::record_policy_version( ( new DraftService() )->create( $input ) ) );
+		$out['warnings'] = array_merge( (array) ( $out['warnings'] ?? array() ), self::taxonomy_warnings( (string) ( $input['post_type'] ?? '' ), (int) ( $out['log']['post_id'] ?? 0 ), array() ) );
+		return $out;
 	}
 
 	/**
@@ -897,7 +934,9 @@ final class Abilities {
 	public static function update_draft( array $input ): array {
 		self::assert_policy_version( $input );
 		unset( $input['policy_version'] );
-		return self::with_policy_version( self::record_policy_version( ( new DraftService() )->update( $input ) ) );
+		$out             = self::with_policy_version( self::record_policy_version( ( new DraftService() )->update( $input ) ) );
+		$out['warnings'] = array_merge( (array) ( $out['warnings'] ?? array() ), self::taxonomy_warnings( (string) ( $input['post_type'] ?? '' ), (int) ( $out['log']['post_id'] ?? 0 ), array() ) );
+		return $out;
 	}
 
 	/**

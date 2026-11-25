@@ -3,7 +3,7 @@ Contributors: shipinc
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.9.11
+Stable tag: 0.9.12
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -17,6 +17,9 @@ WordPress 側では AI を呼びません。公開・予約・削除・ACF の�
 読み取り（投稿タイプ・制作方針・入力欄の構造・記事）、下書きの検証・作成・修正、写真の登録（アップロード用 URL・分割転送・URL からの取り込み）のツールがあります。
 
 == Changelog ==
+
+= 0.9.12 =
+* 最初のツール（list-post-types）の返事に、分類ごとの選べる語の一覧を足した。公開される分類が空のまま保存しようとしたら知らせる。
 
 = 0.9.11 =
 * 下書きの保存に、読んだ制作方針の版（policy_version）を必須にした（今の版でなければ保存せず、AI が読み直して送り直す）。保存した下書きに方針の版を記録し、記事を読むときに返す。
