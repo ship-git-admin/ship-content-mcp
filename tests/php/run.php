@@ -178,6 +178,8 @@ $check( '最初のツール（list-post-types）の返事の手順に、写真�
 $abil_src = (string) file_get_contents( __DIR__ . '/../../ship-content-mcp/src/MCP/Abilities.php' );
 $check( '写真の4つのツールの説明に英語の言葉（Upload a photo / image）があり、ない名前（upload-local-image）を書かない', 4 === substr_count( $abil_src, "'Upload a photo / image" ) && ! str_contains( $abil_src, 'upload-local-image' ) && ! str_contains( $ins, 'upload-local-image' ) );
 
+$check( 'ツールの印に openWorldHint=false（このサイトの中だけ。Codex が写真の分割で承認を待って止まらないように。0.9.6）', 1 === substr_count( $abil_src, "'openWorldHint' => false," ) );
+
 // 使い方タブ：使う画像がすべてあり、文にサイト固有の名前がない。
 $help_src = (string) file_get_contents( __DIR__ . '/../../ship-content-mcp/src/Admin/HelpPage.php' );
 preg_match_all( "/self::fig\\( '([a-z0-9_]+)'/", $help_src, $hm );

@@ -83,9 +83,14 @@ final class Abilities {
 				'type'   => 'tool',
 			),
 			'annotations'  => array(
-				'readonly'    => $readonly,
-				'destructive' => $destructive,
-				'idempotent'  => true,
+				'readonly'      => $readonly,
+				'destructive'   => $destructive,
+				'idempotent'    => true,
+				// このサイトの中だけを扱う（外のサービスに触れない）。MCP の openWorldHint=false。
+				// Codex は「壊さない・外に触れない」が明示されたツールを、承認なしで通す。付けないと写真の分割
+				// （upload-chunk。写真の base64 が丸ごと承認に入る）でも承認を待ち、止まっていた（0.9.6）。
+				// 既存の下書きを直す update-draft は destructive のままなので、承認が要る。
+				'openWorldHint' => false,
 			),
 		);
 		$post_type = array(

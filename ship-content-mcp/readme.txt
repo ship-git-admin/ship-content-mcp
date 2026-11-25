@@ -3,7 +3,7 @@ Contributors: shipinc
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.9.5
+Stable tag: 0.9.6
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -17,6 +17,9 @@ WordPress 側では AI を呼びません。公開・予約・削除・ACF の�
 読み取り（投稿タイプ・制作方針・入力欄の構造・記事）、下書きの検証・作成・修正、写真の分割転送のツールがあります。
 
 == Changelog ==
+
+= 0.9.6 =
+* 全部のツールに MCP の印 openWorldHint=false（このサイトの中だけ）を付けた。Codex で写真の分割転送が承認を待って止まっていたため。写真の転送と新しい下書きの作成は承認なしで動き、既存の下書きを直すときは今までどおり承認が要る。
 
 = 0.9.5 =
 * AI がツールを名前や説明で探すアプリ（Codex など）でも、写真の登録まで迷わないようにした（サーバーの案内・最初のツールの返事・誤りに、写真の登録の仕方とツールの名前を入れた。写真のツールの説明に英語の言葉を足した）。
