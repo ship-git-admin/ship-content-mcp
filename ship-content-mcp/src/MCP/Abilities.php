@@ -48,7 +48,7 @@ final class Abilities {
 	public const STEPS = array(
 		'1. この返事の data.creation_policy（サイト管理者の制作方針）を読む。記事の書き方・文字数・写真の並べ方は、これに従う（迷ったら PM に確認）。次に get-acf-schema で入力欄を読む（参考にする記事は search-posts・get-post）。',
 		'2. 写真・画像があれば、1枚ずつメディアに登録する。誰でも開ける写真の URL があれば import-image-url。手元のファイルは get-upload-url（返ってきた curl を実行）。コマンドでネットワークにつなげないときは prepare-upload → upload-chunk → finish-upload（返事の how_to_send のコマンドの出力をそのまま渡す。base64 を自分で書き写さない）。返った attachment_id を、画像の欄や featured_media に入れる。うまくいかないときは、この返事の meta.photos（写真の出どころ別の手順・取り込めないとき）に従う。',
-		'3. validate-draft で確かめ、制作方針に合っているかも自分で確かめて、PM に見せてから、create-draft（新しい下書き）か update-draft（下書きを直す）で保存する。返事の meta.policy_version が、最初に読んだ版（creation_policy.version）と違えば、get-creation-policy を読み直して合わせる。',
+		'3. validate-draft で確かめ、制作方針に合っているかも自分で確かめて、PM に見せてから、create-draft（新しい下書き）か update-draft（下書きを直す）で保存する。保存には policy_version（creation_policy.version）を付ける。方針が変わっていると保存されない（POLICY-002）ので、get-creation-policy で読み直し、方針に合わせてから送り直す。',
 		'4. 保存した後は get-post で読み戻す。',
 		'ツールが見つからない・使えないときも、WordPress の管理画面・ログイン・ブラウザで代わりをしない。',
 	);
@@ -125,6 +125,11 @@ final class Abilities {
 				// 写真の URL から取り込む import-image-url だけは、外のサイトを読むので true（Codex は承認を求める。引数は短い）。
 				'openWorldHint' => $open_world,
 			),
+		);
+		$policy_version = array(
+			'type'        => 'integer',
+			'minimum'     => 0,
+			'description' => '必須。作業の初めに読んだ制作方針の版（list-post-types の data.creation_policy.version、または get-creation-policy の version）。今の版でなければ保存しない（POLICY-002。読み直して方針に合わせてから送り直す）。',
 		);
 		$post_type = array(
 			'type'        => 'string',
@@ -209,6 +214,7 @@ final class Abilities {
 					),
 				),
 				'idempotency_key'    => $idem,
+				'policy_version'     => $policy_version,
 				'schema_fingerprint' => array(
 					'type'        => 'string',
 					'minLength'   => 8,
@@ -233,6 +239,7 @@ final class Abilities {
 					'description' => 'get-post で返った if_match（読んだ後に変わっていたら保存しない）。',
 				),
 				'idempotency_key'    => $idem,
+				'policy_version'     => $policy_version,
 				'changes'            => array(
 					'type'     => 'array',
 					'minItems' => 1,
@@ -409,7 +416,7 @@ final class Abilities {
 		self::add(
 			self::CREATE_DRAFT,
 			'下書きを作る',
-			'新しい下書きを作る（状態は必ず下書き。公開はできない）。title・ACF の値（acf_changes）・分類（taxonomies）・アイキャッチ（featured_media）を一度に入れる。先に validate-draft で確かめる。送り直すときは同じ idempotency_key を使う（2つ作られない）。作った後は get-post で読み戻す。' . self::VALUE_RULES,
+			'新しい下書きを作る（状態は必ず下書き。公開はできない）。title・ACF の値（acf_changes）・分類（taxonomies）・アイキャッチ（featured_media）を一度に入れる。制作方針に従って書き、policy_version に読んだ方針の版を入れる（今の版でなければ保存しない）。先に validate-draft で確かめる。送り直すときは同じ idempotency_key を使う（2つ作られない）。作った後は get-post で読み戻す。' . self::VALUE_RULES,
 			$create,
 			array( self::class, 'create_draft' ),
 			$meta( false )
@@ -417,7 +424,7 @@ final class Abilities {
 		self::add(
 			self::UPDATE_DRAFT,
 			'下書きを直す',
-			'既存の下書きを、指定した部分だけ直す（指定しなかった欄は変えない。公開済みの記事は直せない）。get-post の if_match を付ける（読んだ後に変わっていたら保存しない）。ACF は上の階層の欄ごとに、値の全体を送る（repeater・flexible は全部の行）。既存の値を消す変更は allow_removals=true がないと止まる。先に validate-draft で確かめる。' . self::VALUE_RULES,
+			'既存の下書きを、指定した部分だけ直す（指定しなかった欄は変えない。公開済みの記事は直せない）。get-post の if_match を付ける（読んだ後に変わっていたら保存しない）。ACF は上の階層の欄ごとに、値の全体を送る（repeater・flexible は全部の行）。既存の値を消す変更は allow_removals=true がないと止まる。policy_version に読んだ制作方針の版を入れる（今の版でなければ保存しない）。先に validate-draft で確かめる。' . self::VALUE_RULES,
 			$patch,
 			array( self::class, 'update_draft' ),
 			$meta( false, true )
@@ -750,8 +757,70 @@ final class Abilities {
 	 * @return array<string,mixed>
 	 */
 	public static function get_post( array $input ): array {
-		$out         = PostReader::get( (string) ( $input['post_type'] ?? '' ), (int) ( $input['post_id'] ?? 0 ) );
-		$out['meta'] = array( 'notice' => 'acf の value は保存されたままの形です。直すときは、この形のまま update-draft に送ってください。' );
+		$post_id     = (int) ( $input['post_id'] ?? 0 );
+		$out         = PostReader::get( (string) ( $input['post_type'] ?? '' ), $post_id );
+		$out['meta'] = array(
+			'notice' => 'acf の value は保存されたままの形です。直すときは、この形のまま update-draft に送ってください。',
+			'policy' => self::saved_policy( $post_id ),
+		);
+		return $out;
+	}
+
+	/** 下書きを MCP で保存したときの制作方針の版を記録する post meta（0.9.11）。 */
+	public const META_POLICY_VERSION = '_ship_content_mcp_policy_version';
+
+	/**
+	 * 保存に付いてきた制作方針の版が、今の版か確かめる（create-draft・update-draft）。
+	 * 入力の形では必須にせず、ここで確かめる（直し方の付いた誤りを返すため）。
+	 *
+	 * @param array<string,mixed> $input
+	 * @throws DomainError POLICY-002
+	 */
+	public static function assert_policy_version( array $input ): void {
+		$cur = Policies::version();
+		$got = $input['policy_version'] ?? null;
+		if ( ! is_int( $got ) && ! ( is_string( $got ) && '' !== $got && ctype_digit( $got ) ) ) {
+			throw new DomainError( 'POLICY-002', 'policy_version missing', false, '制作方針の版（policy_version）が付いていません。list-post-types の data.creation_policy（または get-creation-policy）で今の制作方針（版 ' . $cur . '）を読み、内容をその方針に合わせてから、policy_version に ' . $cur . ' を入れて送り直してください。' );
+		}
+		if ( (int) $got !== $cur ) {
+			throw new DomainError( 'POLICY-002', 'policy_version stale: ' . (int) $got . ' != ' . $cur, false, '制作方針が変わりました（読んだ版 ' . (int) $got . '、今は版 ' . $cur . '）。get-creation-policy で読み直し、内容を今の方針に合わせてから、policy_version に ' . $cur . ' を入れて送り直してください。' );
+		}
+	}
+
+	/**
+	 * その記事を MCP で保存したときの制作方針の版と、今の版（get-post の返事）。
+	 *
+	 * @return array<string,mixed>
+	 */
+	public static function saved_policy( int $post_id ): array {
+		$cur   = Policies::version();
+		$raw   = $post_id > 0 ? get_post_meta( $post_id, self::META_POLICY_VERSION, true ) : '';
+		$saved = ( '' !== $raw && null !== $raw ) ? (int) $raw : null;
+		if ( null === $saved ) {
+			$notice = 'この記事を保存したときの制作方針の版は記録されていません（MCP 以外で作ったか、版を記録する前に保存した記事）。文章が今の制作方針（版 ' . $cur . '）に合っているかは、内容を読んで確かめてください。';
+		} elseif ( $saved === $cur ) {
+			$notice = 'この記事は、今の制作方針（版 ' . $cur . '）で保存されました。';
+		} else {
+			$notice = 'この記事は制作方針の版 ' . $saved . ' のときに保存されました。今は版 ' . $cur . ' です。文章が今の方針に合っていなければ、PM に書き直しを提案してください。';
+		}
+		return array(
+			'saved_with_version' => $saved,
+			'current_version'    => $cur,
+			'notice'             => $notice,
+		);
+	}
+
+	/**
+	 * 保存できたら、そのときの制作方針の版を下書きに記録する。
+	 *
+	 * @param array<string,mixed> $out
+	 * @return array<string,mixed>
+	 */
+	private static function record_policy_version( array $out ): array {
+		$post_id = (int) ( $out['log']['post_id'] ?? ( $out['data']['post_id'] ?? 0 ) );
+		if ( $post_id > 0 && empty( $out['data']['idempotent_replay'] ) ) {
+			update_post_meta( $post_id, self::META_POLICY_VERSION, Policies::version() );
+		}
 		return $out;
 	}
 
@@ -761,7 +830,17 @@ final class Abilities {
 	 */
 	public static function validate_draft( array $input ): array {
 		$draft = is_array( $input['draft'] ?? null ) ? $input['draft'] : array();
-		return self::with_policy_version( ( new DraftService() )->validate( (string) ( $input['operation'] ?? '' ), $draft ) );
+		$given = array_key_exists( 'policy_version', $draft );
+		if ( $given ) {
+			self::assert_policy_version( $draft );
+		}
+		unset( $draft['policy_version'] );
+		$out = self::with_policy_version( ( new DraftService() )->validate( (string) ( $input['operation'] ?? '' ), $draft ) );
+		if ( ! $given ) {
+			$out['warnings']   = (array) ( $out['warnings'] ?? array() );
+			$out['warnings'][] = '保存（create-draft・update-draft）には policy_version が要ります（今の制作方針は版 ' . Policies::version() . '。list-post-types の data.creation_policy）。';
+		}
+		return $out;
 	}
 
 	/**
@@ -806,7 +885,9 @@ final class Abilities {
 	 * @return array<string,mixed>
 	 */
 	public static function create_draft( array $input ): array {
-		return self::with_policy_version( ( new DraftService() )->create( $input ) );
+		self::assert_policy_version( $input );
+		unset( $input['policy_version'] );
+		return self::with_policy_version( self::record_policy_version( ( new DraftService() )->create( $input ) ) );
 	}
 
 	/**
@@ -814,7 +895,9 @@ final class Abilities {
 	 * @return array<string,mixed>
 	 */
 	public static function update_draft( array $input ): array {
-		return self::with_policy_version( ( new DraftService() )->update( $input ) );
+		self::assert_policy_version( $input );
+		unset( $input['policy_version'] );
+		return self::with_policy_version( self::record_policy_version( ( new DraftService() )->update( $input ) ) );
 	}
 
 	/**

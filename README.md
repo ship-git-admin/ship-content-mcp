@@ -8,7 +8,7 @@
 - 制作方針は、管理画面に自然な文章で書きます（サイト共通・投稿タイプ別）。
 - 公開・予約・削除・ACF の定義の変更・テーマやプラグインの変更は、できません。
 
-> 版 0.9.10。PM の試運用の前の段階です。
+> 版 0.9.11。PM の試運用の前の段階です。
 
 ## 必要なもの
 
@@ -101,7 +101,7 @@ HTTPS のサイトでは、WordPress の Application Password でも接続でき
 | `ship-content-search-posts` | 記事を探す（公開済み・下書き） |
 | `ship-content-get-post` | 記事を読む（ACF の値は保存されたままの形。`if_match` 付き） |
 | `ship-content-validate-draft` | 保存の前に確かめる（書かない。誤り・消える内容・差分） |
-| `ship-content-create-draft` | 下書きを作る（状態は必ず下書き） |
+| `ship-content-create-draft` | 下書きを作る（状態は必ず下書き。読んだ制作方針の版 `policy_version` が要る） |
 | `ship-content-update-draft` | 下書きを直す（指定した部分だけ。消す変更は `allow_removals` が要る） |
 | `ship-content-get-upload-url` | 写真のアップロード用 URL（30分・1回）と curl のコマンド。コマンドを実行できる AI はこれがいちばん簡単 |
 | `ship-content-import-image-url` | 誰でも開ける写真の URL から取り込む（サイトの中・内側のネットワークの宛先は断る） |

@@ -204,8 +204,14 @@ $check(
 );
 $check(
 	'制作方針は最初のツール（list-post-types）の返事に入り、保存の前後の返事に今の版が付く（0.9.10）',
-	str_contains( $abil_src, "'creation_policy' => self::creation_policy()," ) && str_contains( $abil_src, "'type_policies' => (object) \$types," ) && 3 === substr_count( $abil_src, 'return self::with_policy_version(' )
-	&& str_contains( $steps, 'data.creation_policy' ) && str_contains( $steps, 'meta.policy_version' ) && str_contains( $ins, '最初に list-post-types を呼ぶ（制作方針' )
+	str_contains( $abil_src, "'creation_policy' => self::creation_policy()," ) && str_contains( $abil_src, "'type_policies' => (object) \$types," ) && 3 === substr_count( $abil_src, 'self::with_policy_version( ' )
+	&& str_contains( $steps, 'data.creation_policy' ) && str_contains( $abil_src, "\$out['meta']['policy_version'] = Policies::version();" ) && str_contains( $ins, '最初に list-post-types を呼ぶ（制作方針' )
+);
+$check(
+	'保存のときに制作方針の版を確かめ（POLICY-002）、下書きに版を記録し、記事を読むときに返す（0.9.11）',
+	2 === substr_count( $abil_src, "'policy_version'     => \$policy_version," ) && 2 === substr_count( $abil_src, "self::assert_policy_version( \$input );" ) && 2 === substr_count( $abil_src, 'self::record_policy_version(' )
+	&& str_contains( $abil_src, "'policy' => self::saved_policy( \$post_id )," ) && isset( \ShipContentMcp\Core\DomainError::FIX['POLICY-002'] ) && 'ai' === ( new \ShipContentMcp\Core\DomainError( 'POLICY-002' ) )->who_fixes()
+	&& str_contains( $steps, 'policy_version' ) && str_contains( $ins, 'policy_version' )
 );
 $us_src = (string) file_get_contents( __DIR__ . '/../../ship-content-mcp/src/Media/UploadService.php' );
 $check( '写真の URL から取り込む：wp_safe_remote_get・http(s) だけ・大きさの上限・中身で判定・ホスト名だけ記録', str_contains( $us_src, 'wp_safe_remote_get(' ) && str_contains( $us_src, "array( 'http', 'https' )" ) && str_contains( $us_src, 'wp_http_validate_url( $url )' ) && str_contains( $us_src, "'limit_response_size' => \$max + 1" ) && str_contains( $us_src, 'ImageSniff::sniff( substr( $body, 0, 16 ) )' ) && in_array( 'ship-content/import-image-url', \ShipContentMcp\MCP\Abilities::TOOLS, true ) );
