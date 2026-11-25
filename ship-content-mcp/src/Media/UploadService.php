@@ -107,8 +107,121 @@ final class UploadService {
 				'chunk_size'        => ImageSniff::CHUNK_SIZE,
 				'chunks'            => $chunks,
 				'expires_at'        => gmdate( 'c', time() + self::TTL ),
+				'how_to_send'       => self::how_to_send( $chunks ),
 			),
 			'warnings' => array( self::PUBLIC_NOTICE ),
+		);
+	}
+
+	/**
+	 * 分割の送り方（prepare-upload の返事）。AI が写真の base64 を自分で書き写さずに済むように、分割ごとのコマンドを渡す（0.9.7）。
+	 *
+	 * Codex などのコードの中でツールを呼べる AI は、1つのスクリプトの中でコマンドの出力をそのまま upload-chunk に渡せる
+	 * （試験で、約21万字の base64 も欠けずに渡せた）。AI が自分の返事として base64 を書くと、長くて渡せない・間違える。
+	 *
+	 * @return array<string,mixed>
+	 */
+	public static function how_to_send( int $chunks ): array {
+		$rows = array();
+		for ( $i = 0; $i < $chunks; $i++ ) {
+			$dd     = "dd if='<写真のファイルのパス>' bs=" . ImageSniff::CHUNK_SIZE . ' skip=' . $i . ' count=1 2>/dev/null';
+			$rows[] = array(
+				'index'          => $i,
+				'base64_command' => $dd . " | base64 | tr -d '\\n'",
+				'sha256_command' => $dd . ' | shasum -a 256 | cut -c1-64',
+			);
+		}
+		return array(
+			'note'   => '写真のデータ（base64）は、自分で書き写さないでください（長くて渡せない・間違える）。分割ごとに base64_command と sha256_command を実行し、その出力をそのまま upload-chunk の content_base64 と chunk_sha256 に渡します。コードの中でツールを呼べる AI（Codex の exec など）は、1つのスクリプトの中で、コマンドの出力を変数に入れて upload-chunk を呼び、最後に finish-upload を呼びます。<写真のファイルのパス> は手元の写真のパスに置き換えます。写真に誰でも開ける URL があるなら import-image-url、シェルでネットワークにつなげるなら get-upload-url（curl 1回）の方が簡単です。',
+			'chunks' => $rows,
+		);
+	}
+
+	/**
+	 * 写真の URL から取り込む（import-image-url）。誰でも開ける http(s) の URL だけ（0.9.7）。
+	 *
+	 * - WordPress の wp_safe_remote_get で読む（このサーバーの中・内側のネットワークの宛先・変わったポートは断る。転送先も同じく確かめる）。
+	 * - 読む大きさは写真の上限まで。JPEG・PNG・WebP だけ（中身で判定）。あとは get-upload-url・finish-upload と同じ登録（メタデータを消す）。
+	 * - 誤りの記録には URL のホスト名だけを残す（URL に鍵が入っていることがあるため）。
+	 *
+	 * @param array<string,mixed> $in post_type, url, filename?, title?, alt?, attach_to_post_id?
+	 * @return array{data:array<string,mixed>,warnings:list<string>,log:array<string,mixed>}
+	 * @throws DomainError
+	 */
+	public function import_url( array $in ): array {
+		$post_type = (string) ( $in['post_type'] ?? '' );
+		PostTypes::assert_writable( $post_type );
+		$url    = trim( (string) ( $in['url'] ?? '' ) );
+		$parts  = wp_parse_url( $url );
+		$scheme = is_array( $parts ) ? strtolower( (string) ( $parts['scheme'] ?? '' ) ) : '';
+		$host   = is_array( $parts ) ? strtolower( (string) ( $parts['host'] ?? '' ) ) : '';
+		if ( ! in_array( $scheme, array( 'http', 'https' ), true ) || '' === $host || isset( $parts['user'] ) || isset( $parts['pass'] ) || false === wp_http_validate_url( $url ) ) {
+			throw new DomainError( 'MEDIA-003', 'url not allowed: ' . $host, false, '取り込めない URL です（誰でも開ける http・https の URL だけ。このサーバーの中や社内のネットワークの宛先は読みません）' );
+		}
+		$parent = self::check_parent( (int) ( $in['attach_to_post_id'] ?? 0 ), $post_type );
+		$max    = (int) Settings::get()['media_max_mb'] * 1024 * 1024;
+		$res    = wp_safe_remote_get(
+			$url,
+			array(
+				'timeout'             => 20,
+				'redirection'         => 3,
+				'limit_response_size' => $max + 1,
+				'user-agent'          => 'ShipContentMCP/' . SHIP_CONTENT_MCP_VERSION . '; ' . home_url( '/' ),
+				'headers'             => array( 'Accept' => 'image/jpeg, image/png, image/webp' ),
+			)
+		);
+		if ( is_wp_error( $res ) ) {
+			throw new DomainError( 'MEDIA-003', 'fetch failed (' . $host . '): ' . $res->get_error_code(), true, '写真の URL を読めませんでした（' . $res->get_error_code() . '）。手元に写真があるなら get-upload-url で送ってください' );
+		}
+		$code = (int) wp_remote_retrieve_response_code( $res );
+		if ( 200 !== $code ) {
+			throw new DomainError( 'MEDIA-003', 'fetch http ' . $code . ' (' . $host . ')', 429 === $code || $code >= 500, '写真の URL が ' . $code . ' を返しました' . ( in_array( $code, array( 401, 403 ), true ) ? '（ログインが要る URL は読めません。写真を手元に保存して get-upload-url で送ってください）' : '' ) );
+		}
+		$body = (string) wp_remote_retrieve_body( $res );
+		if ( '' === $body || strlen( $body ) > $max ) {
+			throw new DomainError( 'MEDIA-002', 'size out of range: ' . strlen( $body ), false, '写真が空か、上限（' . (int) Settings::get()['media_max_mb'] . 'MB）を超えています' );
+		}
+		$mime = ImageSniff::sniff( substr( $body, 0, 16 ) );
+		if ( null === $mime ) {
+			throw new DomainError( 'MEDIA-002', 'not an allowed image (' . $host . ')', false, 'その URL の中身は JPEG・PNG・WebP の画像ではありません（写真のページではなく、写真そのものの URL を渡してください）' );
+		}
+		$ext  = array(
+			'image/jpeg' => 'jpg',
+			'image/png'  => 'png',
+			'image/webp' => 'webp',
+		)[ $mime ];
+		$base = (string) ( $in['filename'] ?? '' );
+		if ( '' === $base ) {
+			$base = rawurldecode( wp_basename( (string) ( $parts['path'] ?? '' ) ) );
+		}
+		$base     = sanitize_file_name( (string) pathinfo( $base, PATHINFO_FILENAME ) );
+		$filename = ( '' !== $base ? mb_substr( $base, 0, 150 ) : 'photo' ) . '.' . $ext;
+		$sha      = hash( 'sha256', $body );
+		$existing = self::find_existing( $sha );
+		if ( $existing > 0 ) {
+			return array(
+				'data'     => array( 'already_uploaded' => true ) + self::attachment_info( $existing ),
+				'warnings' => array( '同じ写真がすでに登録されているので、その添付 ID を返しました。' ),
+				'log'      => array( 'post_id' => $existing ),
+			);
+		}
+		require_once ABSPATH . 'wp-admin/includes/file.php';
+		$tmp = (string) wp_tempnam( $filename );
+		try {
+			if ( '' === $tmp || false === file_put_contents( $tmp, $body ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+				throw new DomainError( 'SYS-001', 'could not write temp file', true );
+			}
+			$stored = $this->store( $tmp, $filename, $mime, $post_type, $parent, $in, $sha );
+			$tmp    = '';
+		} finally {
+			if ( '' !== $tmp && file_exists( $tmp ) ) {
+				wp_delete_file( $tmp );
+			}
+		}
+		return array(
+			'data'     => $stored['data'] + array( 'source_host' => $host ),
+			'warnings' => $stored['warnings'],
+			'log'      => array( 'post_id' => $stored['id'] ),
 		);
 	}
 

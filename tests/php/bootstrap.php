@@ -18,3 +18,5 @@ require __DIR__ . '/../../ship-content-mcp/src/Security/OAuth.php';
 require __DIR__ . '/../../ship-content-mcp/src/Core/DomainError.php';
 require __DIR__ . '/../../ship-content-mcp/src/MCP/Server.php';
 require __DIR__ . '/../../ship-content-mcp/src/MCP/Abilities.php';
+require __DIR__ . '/../../ship-content-mcp/src/Media/ImageSniff.php';
+require __DIR__ . '/../../ship-content-mcp/src/Media/UploadService.php';

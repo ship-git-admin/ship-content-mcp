@@ -178,7 +178,14 @@ $check( '最初のツール（list-post-types）の返事の手順に、写真�
 $abil_src = (string) file_get_contents( __DIR__ . '/../../ship-content-mcp/src/MCP/Abilities.php' );
 $check( '写真の4つのツールの説明に英語の言葉（Upload a photo / image）があり、ない名前（upload-local-image）を書かない', 4 === substr_count( $abil_src, "'Upload a photo / image" ) && ! str_contains( $abil_src, 'upload-local-image' ) && ! str_contains( $ins, 'upload-local-image' ) );
 
-$check( 'ツールの印に openWorldHint=false（このサイトの中だけ。Codex が写真の分割で承認を待って止まらないように。0.9.6）', 1 === substr_count( $abil_src, "'openWorldHint' => false," ) );
+$check( 'ツールの印に openWorldHint（このサイトの中だけは false。外のサイトを読む import-image-url だけ true。0.9.6・0.9.7）', 1 === substr_count( $abil_src, '\'openWorldHint\' => $open_world,' ) && 1 === substr_count( $abil_src, '$meta( false, false, true )' ) && str_contains( $abil_src, 'bool $open_world = false' ) );
+$hs = \ShipContentMcp\Media\UploadService::how_to_send( 2 );
+$check(
+	'転送の始まりの返事に、分割ごとのコマンドと「書き写さない」の注意がある（0.9.7）',
+	2 === count( $hs['chunks'] ) && str_contains( $hs['chunks'][1]['base64_command'], 'skip=1 count=1' ) && str_ends_with( $hs['chunks'][0]['base64_command'], "| base64 | tr -d '\\n'" ) && str_contains( $hs['chunks'][0]['sha256_command'], 'shasum -a 256' ) && str_contains( $hs['note'], '書き写さない' ) && str_contains( $hs['note'], 'import-image-url' )
+);
+$us_src = (string) file_get_contents( __DIR__ . '/../../ship-content-mcp/src/Media/UploadService.php' );
+$check( '写真の URL から取り込む：wp_safe_remote_get・http(s) だけ・大きさの上限・中身で判定・ホスト名だけ記録', str_contains( $us_src, 'wp_safe_remote_get(' ) && str_contains( $us_src, "array( 'http', 'https' )" ) && str_contains( $us_src, 'wp_http_validate_url( $url )' ) && str_contains( $us_src, "'limit_response_size' => \$max + 1" ) && str_contains( $us_src, 'ImageSniff::sniff( substr( $body, 0, 16 ) )' ) && in_array( 'ship-content/import-image-url', \ShipContentMcp\MCP\Abilities::TOOLS, true ) );
 
 // 使い方タブ：使う画像がすべてあり、文にサイト固有の名前がない。
 $help_src = (string) file_get_contents( __DIR__ . '/../../ship-content-mcp/src/Admin/HelpPage.php' );

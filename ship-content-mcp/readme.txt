@@ -3,7 +3,7 @@ Contributors: shipinc
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.9.6
+Stable tag: 0.9.7
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -14,9 +14,12 @@ License URI: https://www.gnu.org/licenses/gpl-2.0.html
 WordPress 公式の MCP Adapter（別プラグイン）の上で動く、自作の MCP サーバーです。
 WordPress 側では AI を呼びません。公開・予約・削除・ACF の定義の変更はできません。
 
-読み取り（投稿タイプ・制作方針・入力欄の構造・記事）、下書きの検証・作成・修正、写真の分割転送のツールがあります。
+読み取り（投稿タイプ・制作方針・入力欄の構造・記事）、下書きの検証・作成・修正、写真の登録（アップロード用 URL・分割転送・URL からの取り込み）のツールがあります。
 
 == Changelog ==
+
+= 0.9.7 =
+* 写真の URL から取り込むツール import-image-url（誰でも開ける http・https の URL だけ。サーバーの中・内側のネットワークの宛先は断る）。prepare-upload の返事に、分割ごとのコマンドと「base64 を書き写さない」注意（how_to_send）。
 
 = 0.9.6 =
 * 全部のツールに MCP の印 openWorldHint=false（このサイトの中だけ）を付けた。Codex で写真の分割転送が承認を待って止まっていたため。写真の転送と新しい下書きの作成は承認なしで動き、既存の下書きを直すときは今までどおり承認が要る。

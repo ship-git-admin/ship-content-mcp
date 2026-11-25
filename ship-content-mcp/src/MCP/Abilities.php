@@ -41,21 +41,22 @@ final class Abilities {
 	public const PREPARE_UPLOAD  = 'ship-content/prepare-upload';
 	public const UPLOAD_CHUNK    = 'ship-content/upload-chunk';
 	public const FINISH_UPLOAD   = 'ship-content/finish-upload';
+	public const IMPORT_IMAGE_URL = 'ship-content/import-image-url';
 
 	/** 自作サーバーに載せるツール（この順で一覧に出る）。 */
 	/** 最初に呼ぶ list-post-types の返事に付ける、全部の手順（AI がツールを探さなくても、写真まで進めるように。0.9.5）。 */
 	public const STEPS = array(
 		'1. get-creation-policy と get-acf-schema で、制作方針と入力欄を読む（参考にする記事は search-posts・get-post）。',
-		'2. 写真・画像があれば、get-upload-url で1枚ずつメディアに登録する（返ってきた curl を実行）。コマンドを実行できないときは prepare-upload → upload-chunk → finish-upload。返った attachment_id を、画像の欄や featured_media に入れる。',
+		'2. 写真・画像があれば、1枚ずつメディアに登録する。誰でも開ける写真の URL があれば import-image-url。手元のファイルは get-upload-url（返ってきた curl を実行）。コマンドでネットワークにつなげないときは prepare-upload → upload-chunk → finish-upload（返事の how_to_send のコマンドの出力をそのまま渡す。base64 を自分で書き写さない）。返った attachment_id を、画像の欄や featured_media に入れる。',
 		'3. validate-draft で確かめ、PM に見せてから、create-draft（新しい下書き）か update-draft（下書きを直す）で保存する。',
 		'4. 保存した後は get-post で読み戻す。',
 		'ツールが見つからない・使えないときも、WordPress の管理画面・ログイン・ブラウザで代わりをしない。',
 	);
 
 	/** get-acf-schema の返事に付ける、画像の欄の入れ方。 */
-	public const IMAGE_HINT = '画像の欄（type が image）と featured_media には、メディアの添付 ID（数）を入れる。新しい写真は get-upload-url（コマンドを実行できなければ prepare-upload → upload-chunk → finish-upload）で登録し、返った attachment_id を使う。URL は入れられない。';
+	public const IMAGE_HINT = '画像の欄（type が image）と featured_media には、メディアの添付 ID（数）を入れる。新しい写真は、URL があれば import-image-url、手元のファイルは get-upload-url（コマンドでネットワークにつなげなければ prepare-upload → upload-chunk → finish-upload）で登録し、返った attachment_id を使う。欄に URL は入れられない。';
 
-	public const TOOLS = array( self::LIST_POST_TYPES, self::GET_POLICY, self::GET_ACF_SCHEMA, self::SEARCH_POSTS, self::GET_POST, self::VALIDATE_DRAFT, self::CREATE_DRAFT, self::UPDATE_DRAFT, self::GET_UPLOAD_URL, self::PREPARE_UPLOAD, self::UPLOAD_CHUNK, self::FINISH_UPLOAD );
+	public const TOOLS = array( self::LIST_POST_TYPES, self::GET_POLICY, self::GET_ACF_SCHEMA, self::SEARCH_POSTS, self::GET_POST, self::VALIDATE_DRAFT, self::CREATE_DRAFT, self::UPDATE_DRAFT, self::GET_UPLOAD_URL, self::IMPORT_IMAGE_URL, self::PREPARE_UPLOAD, self::UPLOAD_CHUNK, self::FINISH_UPLOAD );
 
 	/** 成功を記録しないツール（分割の数だけ行が増えるため。失敗は記録する）。 */
 	private const QUIET_ON_SUCCESS = array( self::UPLOAD_CHUNK );
@@ -75,7 +76,7 @@ final class Abilities {
 	}
 
 	public static function register(): void {
-		$meta      = static fn( bool $readonly, bool $destructive = false ) => array(
+		$meta      = static fn( bool $readonly, bool $destructive = false, bool $open_world = false ) => array(
 			'show_in_rest' => false,
 			'public'       => false,
 			'mcp'          => array(
@@ -90,7 +91,8 @@ final class Abilities {
 				// Codex は「壊さない・外に触れない」が明示されたツールを、承認なしで通す。付けないと写真の分割
 				// （upload-chunk。写真の base64 が丸ごと承認に入る）でも承認を待ち、止まっていた（0.9.6）。
 				// 既存の下書きを直す update-draft は destructive のままなので、承認が要る。
-				'openWorldHint' => false,
+				// 写真の URL から取り込む import-image-url だけは、外のサイトを読むので true（Codex は承認を求める。引数は短い）。
+				'openWorldHint' => $open_world,
 			),
 		);
 		$post_type = array(
@@ -432,6 +434,47 @@ final class Abilities {
 			$meta( false )
 		);
 		self::add(
+			self::IMPORT_IMAGE_URL,
+			'写真の URL から取り込む',
+			'Import a photo / image from a URL into the WordPress media library（写真の URL から取り込む）。誰でも開ける http・https の写真そのものの URL を渡すと、サイトが読み込んでメディアに登録し、attachment_id と URL を返す。1枚ごとに呼ぶ。写真の URL があるなら、これがいちばん簡単（ファイルの転送も base64 も要らない）。ログインが要る URL（共有ドライブの非公開のリンクなど）・写真のページの URL・手元のファイルは読めないので、手元のファイルは get-upload-url で送る。写真は必ずこのツールたちで登録する（WordPress の管理画面やブラウザで上げない）。' . UploadService::PUBLIC_NOTICE,
+			array(
+				'type'                 => 'object',
+				'properties'           => array(
+					'post_type'         => $post_type,
+					'url'               => array(
+						'type'        => 'string',
+						'minLength'   => 8,
+						'maxLength'   => 2000,
+						'pattern'     => '^https?://',
+						'description' => '写真そのものの URL（http・https。JPEG・PNG・WebP）。',
+					),
+					'filename'          => array(
+						'type'        => 'string',
+						'maxLength'   => 200,
+						'description' => '任意。登録するときのファイル名（拡張子は中身に合わせて付け直す）。',
+					),
+					'title'             => array(
+						'type'      => 'string',
+						'maxLength' => 200,
+					),
+					'alt'               => array(
+						'type'        => 'string',
+						'maxLength'   => 300,
+						'description' => '代替テキスト（写真の内容を短く。お客様の名前・住所は入れない）。',
+					),
+					'attach_to_post_id' => array(
+						'type'        => 'integer',
+						'minimum'     => 1,
+						'description' => '任意。同じ投稿タイプの下書きに添付するとき。',
+					),
+				),
+				'required'             => array( 'post_type', 'url' ),
+				'additionalProperties' => false,
+			),
+			array( self::class, 'import_image_url' ),
+			$meta( false, false, true )
+		);
+		self::add(
 			self::PREPARE_UPLOAD,
 			'写真の転送を始める',
 			'Upload a photo / image without shell commands, step 1 of 3（写真・画像をコマンドなしで登録する1つ目）。写真（JPEG・PNG・WebP）をメディアに登録する転送を始める。ファイル名・MIME・大きさ・ファイル全体の SHA-256 を送ると、upload_session_id と分割の大きさ（chunk_size）を返す。続けて upload-chunk → finish-upload。同じ写真がすでに登録されていれば attachment_id を返す（転送は不要）。シェルのコマンドを実行できる AI は get-upload-url を使う方が簡単。' . UploadService::PUBLIC_NOTICE,
@@ -466,7 +509,7 @@ final class Abilities {
 		self::add(
 			self::UPLOAD_CHUNK,
 			'写真の分割を送る',
-			'Upload a photo / image, step 2 of 3（写真の登録の2つ目）。prepare-upload の後に、写真を chunk_size ごとに分けて送る（index は 0 から、content_base64 は分割の base64、chunk_sha256 は分割の SHA-256）。同じ index を同じ中身で送り直してもよい。',
+			'Upload a photo / image, step 2 of 3（写真の登録の2つ目）。content_base64 と chunk_sha256 は、prepare-upload の返事の how_to_send のコマンドの出力をそのまま渡す（base64 を自分で書き写さない。コードの中でツールを呼べる AI は、1つのスクリプトでコマンドの出力を変数に入れて渡す）。prepare-upload の後に、写真を chunk_size ごとに分けて送る（index は 0 から、content_base64 は分割の base64、chunk_sha256 は分割の SHA-256）。同じ index を同じ中身で送り直してもよい。',
 			array(
 				'type'                 => 'object',
 				'properties'           => array(
@@ -732,5 +775,13 @@ final class Abilities {
 	 */
 	public static function finish_upload( array $input ): array {
 		return ( new UploadService() )->finish( $input );
+	}
+
+	/**
+	 * @param array<string,mixed> $input
+	 * @return array<string,mixed>
+	 */
+	public static function import_image_url( array $input ): array {
+		return ( new UploadService() )->import_url( $input );
 	}
 }

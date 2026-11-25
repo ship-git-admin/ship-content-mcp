@@ -8,7 +8,7 @@
 - 制作方針は、管理画面に自然な文章で書きます（サイト共通・投稿タイプ別）。
 - 公開・予約・削除・ACF の定義の変更・テーマやプラグインの変更は、できません。
 
-> 版 0.9.6。PM の試運用の前の段階です。
+> 版 0.9.7。PM の試運用の前の段階です。
 
 ## 必要なもの
 
@@ -103,8 +103,9 @@ HTTPS のサイトでは、WordPress の Application Password でも接続でき
 | `ship-content-validate-draft` | 保存の前に確かめる（書かない。誤り・消える内容・差分） |
 | `ship-content-create-draft` | 下書きを作る（状態は必ず下書き） |
 | `ship-content-update-draft` | 下書きを直す（指定した部分だけ。消す変更は `allow_removals` が要る） |
-
-| `ship-content-prepare-upload`・`ship-content-upload-chunk`・`ship-content-finish-upload` | 写真の分割転送（JPEG・PNG・WebP。位置情報などは消してから登録） |
+| `ship-content-get-upload-url` | 写真のアップロード用 URL（30分・1回）と curl のコマンド。コマンドを実行できる AI はこれがいちばん簡単 |
+| `ship-content-import-image-url` | 誰でも開ける写真の URL から取り込む（サイトの中・内側のネットワークの宛先は断る） |
+| `ship-content-prepare-upload`・`ship-content-upload-chunk`・`ship-content-finish-upload` | 写真の分割転送（JPEG・PNG・WebP。返事の `how_to_send` のコマンドの出力をそのまま渡す。位置情報などは消してから登録） |
 
 中継プログラムは、ローカルのツール `ship-content-upload-local-image` も AI に見せます。AI は写真のファイルのパスを渡すだけで、読み込み・分割・送信は中継プログラムが行います。送れるのは `SHIP_MCP_UPLOAD_DIRS`（既定はホームフォルダ）の中の、隠しフォルダでない画像だけです。**メディアの写真は、記事が下書きのままでも URL を知っていれば見られます。** 公開してよい写真だけを登録してください。
 
