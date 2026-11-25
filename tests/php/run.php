@@ -184,6 +184,14 @@ $check(
 	'転送の始まりの返事に、分割ごとのコマンドと「書き写さない」の注意がある（0.9.7）',
 	2 === count( $hs['chunks'] ) && str_contains( $hs['chunks'][1]['base64_command'], 'skip=1 count=1' ) && str_ends_with( $hs['chunks'][0]['base64_command'], "| base64 | tr -d '\\n'" ) && str_contains( $hs['chunks'][0]['sha256_command'], 'shasum -a 256' ) && str_contains( $hs['note'], '書き写さない' ) && str_contains( $hs['note'], 'import-image-url' )
 );
+$pg = \ShipContentMcp\MCP\Abilities::photo_guide( 12 );
+$pgs = implode( "\n", array_merge( $pg['by_source'], $pg['when_stuck'] ) );
+$check(
+	'写真の出どころ別の手順と、取り込めないときの案内（0.9.8）：方法の順番・次の方法に移る・誤りのコード・最後は写真なしで下書き・管理画面で代わりをしない',
+	5 === count( $pg['by_source'] ) && str_contains( $pg['by_source'][0], 'import-image-url' ) && str_contains( $pg['by_source'][1], 'get-upload-url' ) && str_contains( $pg['by_source'][2], 'how_to_send' ) && str_contains( $pg['by_source'][3], 'PM に' ) && str_contains( $pg['by_source'][4], '写真なしで下書き' )
+	&& str_contains( $pgs, '2回失敗したら' ) && str_contains( $pgs, 'MEDIA-001' ) && str_contains( $pgs, 'MEDIA-002' ) && str_contains( $pgs, 'MEDIA-003' ) && str_contains( $pgs, '12MB' ) && str_contains( $pgs, '管理画面・ログイン・ブラウザで代わりに上げない' )
+	&& str_contains( $abil_src, "'photos' => self::photo_guide(" ) && str_contains( $ins, 'meta.photos' )
+);
 $us_src = (string) file_get_contents( __DIR__ . '/../../ship-content-mcp/src/Media/UploadService.php' );
 $check( '写真の URL から取り込む：wp_safe_remote_get・http(s) だけ・大きさの上限・中身で判定・ホスト名だけ記録', str_contains( $us_src, 'wp_safe_remote_get(' ) && str_contains( $us_src, "array( 'http', 'https' )" ) && str_contains( $us_src, 'wp_http_validate_url( $url )' ) && str_contains( $us_src, "'limit_response_size' => \$max + 1" ) && str_contains( $us_src, 'ImageSniff::sniff( substr( $body, 0, 16 ) )' ) && in_array( 'ship-content/import-image-url', \ShipContentMcp\MCP\Abilities::TOOLS, true ) );
 

@@ -51,7 +51,7 @@ final class DomainError extends \RuntimeException {
 		'ACF-001'      => array( 'ai', 'get-acf-schema で入力欄の構造を読み直してから、もう一度送ってください' ),
 		'ACF-002'      => array( 'ai', 'error.details の欄を直して、もう一度送ってください' ),
 		'ACF-003'      => array( 'admin', '管理者が入力欄の構造を確かめ直す必要があります。PM に「管理者に送る文」を作ってください' ),
-		'MEDIA-001'    => array( 'ai', '写真の送り方を最初からやり直してください（get-upload-url を取り直す）' ),
+		'MEDIA-001'    => array( 'ai', '届いていない分割だけを送り直してください（prepare-upload の how_to_send のコマンド）。2回失敗したら、写真の URL があれば import-image-url、手元のファイルは get-upload-url に移ってください（list-post-types の meta.photos）' ),
 		'MEDIA-002'    => array( 'pm', '写真の形式か大きさが合いません。JPEG・PNG・WebP に変えるか小さくするよう PM に伝えてください（できるならあなたが変換してもよい）' ),
 		'MEDIA-003'    => array( 'ai', '写真そのものの、誰でも開ける http・https の URL か確かめてください。ログインが要る URL や手元のファイルは get-upload-url（コマンドを実行できなければ prepare-upload から）で送ってください' ),
 		'CONFLICT-001' => array( 'pm', '人が管理画面でこの記事を編集中か、読んだ後に変わりました。PM に編集を閉じてもらってから、get-post で読み直して送ってください' ),

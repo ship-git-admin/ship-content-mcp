@@ -20,6 +20,7 @@ use ShipContentMcp\Content\PostReader;
 use ShipContentMcp\Content\PostTypes;
 use ShipContentMcp\Core\Consts;
 use ShipContentMcp\Core\DomainError;
+use ShipContentMcp\Core\Settings;
 use ShipContentMcp\Media\UploadService;
 use ShipContentMcp\Policy\Policies;
 use ShipContentMcp\Security\AccessGate;
@@ -43,11 +44,10 @@ final class Abilities {
 	public const FINISH_UPLOAD   = 'ship-content/finish-upload';
 	public const IMPORT_IMAGE_URL = 'ship-content/import-image-url';
 
-	/** 自作サーバーに載せるツール（この順で一覧に出る）。 */
 	/** 最初に呼ぶ list-post-types の返事に付ける、全部の手順（AI がツールを探さなくても、写真まで進めるように。0.9.5）。 */
 	public const STEPS = array(
 		'1. get-creation-policy と get-acf-schema で、制作方針と入力欄を読む（参考にする記事は search-posts・get-post）。',
-		'2. 写真・画像があれば、1枚ずつメディアに登録する。誰でも開ける写真の URL があれば import-image-url。手元のファイルは get-upload-url（返ってきた curl を実行）。コマンドでネットワークにつなげないときは prepare-upload → upload-chunk → finish-upload（返事の how_to_send のコマンドの出力をそのまま渡す。base64 を自分で書き写さない）。返った attachment_id を、画像の欄や featured_media に入れる。',
+		'2. 写真・画像があれば、1枚ずつメディアに登録する。誰でも開ける写真の URL があれば import-image-url。手元のファイルは get-upload-url（返ってきた curl を実行）。コマンドでネットワークにつなげないときは prepare-upload → upload-chunk → finish-upload（返事の how_to_send のコマンドの出力をそのまま渡す。base64 を自分で書き写さない）。返った attachment_id を、画像の欄や featured_media に入れる。うまくいかないときは、この返事の meta.photos（写真の出どころ別の手順・取り込めないとき）に従う。',
 		'3. validate-draft で確かめ、PM に見せてから、create-draft（新しい下書き）か update-draft（下書きを直す）で保存する。',
 		'4. 保存した後は get-post で読み戻す。',
 		'ツールが見つからない・使えないときも、WordPress の管理画面・ログイン・ブラウザで代わりをしない。',
@@ -56,6 +56,37 @@ final class Abilities {
 	/** get-acf-schema の返事に付ける、画像の欄の入れ方。 */
 	public const IMAGE_HINT = '画像の欄（type が image）と featured_media には、メディアの添付 ID（数）を入れる。新しい写真は、URL があれば import-image-url、手元のファイルは get-upload-url（コマンドでネットワークにつなげなければ prepare-upload → upload-chunk → finish-upload）で登録し、返った attachment_id を使う。欄に URL は入れられない。';
 
+	/**
+	 * list-post-types の返事に付ける、写真の出どころ別の手順と、取り込めないときの案内（0.9.8）。
+	 *
+	 * 2026-11-25、Codex の AI が写真を登録できずに止まった（承認待ち・base64 を渡せない）。どの AI でも、
+	 * 「次の方法に移る」「最後は写真なしで下書きを作って PM に伝える」まで迷わないように書く。
+	 *
+	 * @return array{by_source:list<string>,when_stuck:list<string>}
+	 */
+	public static function photo_guide( int $max_mb ): array {
+		return array(
+			'by_source'  => array(
+				'1. 写真に誰でも開ける URL がある（写真そのものの URL）：import-image-url で1枚1回。401・403 が返る URL はログインが要るので読めない → 写真を手元に保存して 2 へ。',
+				'2. AI が使えるパソコンに写真のファイルがある：get-upload-url を呼び、返ってきた curl を実行する（<写真のファイルのパス> を置き換える）。curl がネットワークにつなげない（サンドボックスなど）ときは、アプリにネットワークを使う許可を求めるか、3 へ。',
+				'3. コマンドでネットワークにつなげない：prepare-upload → upload-chunk → finish-upload。返事の how_to_send のコマンドの出力を、そのまま upload-chunk に渡す（base64 を自分で書き写さない）。コマンドの出力をツールに渡せないなら 4 へ。',
+				'4. PM がチャットに写真を貼っただけ・AI から写真のファイルを読めない：PM に「誰でも開ける写真の URL」か「写真のファイルの場所（パス）」を聞く。どちらもないときは 5 へ。',
+				'5. どうしても登録できない：写真なしで下書きを作り（画像の欄は空のまま）、登録できなかった写真・入れたい欄・理由・試したことを PM に伝える。写真は PM が WordPress の管理画面で入れる（AI は管理画面・ブラウザを使わない）。',
+			),
+			'when_stuck' => array(
+				'同じ方法で2回失敗したら、同じことを繰り返さず、上の次の方法に移る。',
+				'ツールを呼んだまま応答がない・承認を待ったまま進まない：写真のデータが入ったツールの承認で止まることがある。PM にアプリの承認の画面を確かめてもらい、だめなら別の方法（import-image-url・get-upload-url）に移る。',
+				'MEDIA-001（分割が届いていない・転送の失敗）：how_to_send のコマンドで、届いていない番号の分割だけを送り直す。2回失敗したら 1 か 2 の方法に移る。',
+				'MEDIA-002（形式・大きさ）：JPEG・PNG・WebP にする（iPhone の HEIC は JPEG に）、' . $max_mb . 'MB 以下に縮める。できるならあなたが変換してよい。',
+				'MEDIA-003（URL から読めない）：ページの URL ではなく写真そのものの URL か、ログインなしで開けるかを確かめる。だめなら 2 の方法で。',
+				'アップロード用 URL が使えない（404）：URL は30分・1回だけ。get-upload-url からやり直す。',
+				'つながらない・ツールが見えない：接続の問題なので、写真の前につながりを直す（「AI に貼る文」の案内）。',
+				'どの場合も、WordPress の管理画面・ログイン・ブラウザで代わりに上げない。PM に WordPress の ID・パスワードを聞かない。',
+			),
+		);
+	}
+
+	/** 自作サーバーに載せるツール（この順で一覧に出る）。 */
 	public const TOOLS = array( self::LIST_POST_TYPES, self::GET_POLICY, self::GET_ACF_SCHEMA, self::SEARCH_POSTS, self::GET_POST, self::VALIDATE_DRAFT, self::CREATE_DRAFT, self::UPDATE_DRAFT, self::GET_UPLOAD_URL, self::IMPORT_IMAGE_URL, self::PREPARE_UPLOAD, self::UPLOAD_CHUNK, self::FINISH_UPLOAD );
 
 	/** 成功を記録しないツール（分割の数だけ行が増えるため。失敗は記録する）。 */
@@ -647,6 +678,7 @@ final class Abilities {
 			'meta'     => array(
 				'notice' => '下書きの作成・修正ができるのは writable が true の投稿タイプだけです。公開・削除はできません。',
 				'steps'  => self::STEPS,
+				'photos' => self::photo_guide( (int) Settings::get()['media_max_mb'] ),
 			),
 		);
 	}

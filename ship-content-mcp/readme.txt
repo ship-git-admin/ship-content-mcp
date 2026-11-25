@@ -3,7 +3,7 @@ Contributors: shipinc
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.9.7
+Stable tag: 0.9.8
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -17,6 +17,9 @@ WordPress 側では AI を呼びません。公開・予約・削除・ACF の�
 読み取り（投稿タイプ・制作方針・入力欄の構造・記事）、下書きの検証・作成・修正、写真の登録（アップロード用 URL・分割転送・URL からの取り込み）のツールがあります。
 
 == Changelog ==
+
+= 0.9.8 =
+* 最初のツール（list-post-types）の返事に、写真の出どころ別の手順と、取り込めないときの案内（次の方法に移る・最後は写真なしで下書きを作って PM に伝える）を足した。
 
 = 0.9.7 =
 * 写真の URL から取り込むツール import-image-url（誰でも開ける http・https の URL だけ。サーバーの中・内側のネットワークの宛先は断る）。prepare-upload の返事に、分割ごとのコマンドと「base64 を書き写さない」注意（how_to_send）。
