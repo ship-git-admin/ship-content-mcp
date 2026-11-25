@@ -5,7 +5,7 @@
  * 安全の決まり：
  * - 状態は常に下書き（post_status は受け取らない）。公開・予約・削除・ゴミ箱はしない。
  * - 書けるのは「試験中・試験合格・稼働」の投稿タイプだけ。試験中に作った下書きには試験の印。
- * - 「試験合格」「稼働」では、管理者が確かめた構造（StructureLock）と違えば書かない（ACF-003）。
+ * - 「試験合格」「稼働」では、管理者が確かめた構造（StructureLock）と違えば AI に知らせる（止める設定のときだけ書かない：ACF-003）。
  * - ACF は、いまの構造（その投稿で実際に効くグループ）と照らしてから update_field（ACF の公式 API）で書く。SQL は使わない。
  * - 作成：推定の構造で確かめる → 印付きの下書きを作る → 実際の下書きで判定し直す（違えば消して ACF-001）→ 書く → 読み戻す。
  *   途中で失敗したら、作った下書きを消す（自分で作ったものだけ）。
@@ -41,6 +41,13 @@ final class DraftService {
 
 	/** @var list<string> */
 	private array $warnings = array();
+
+	/** 構造が変わったことの知らせを、返事の warnings に1回だけ入れる。 */
+	private function note_structure( string $notice ): void {
+		if ( '' !== $notice && ! in_array( $notice, $this->warnings, true ) ) {
+			$this->warnings[] = $notice;
+		}
+	}
 
 	// ---- 検証（書かない） ------------------------------------------------------
 
@@ -149,7 +156,7 @@ final class DraftService {
 
 			// 実際の下書きで判定し直す。
 			$real = ( new SchemaReader() )->read( $post_type, $post_id );
-			StructureLock::check( $post_type, $real['data']['field_groups'] );
+			$this->note_structure( StructureLock::check( $post_type, $real['data']['field_groups'] ) );
 			if ( $real['data']['schema_fingerprint'] !== $plan['fingerprint'] ) {
 				throw new DomainError( 'ACF-001', 'structure of the real draft differs from the estimate', false, '', array( array( 'path' => '', 'code' => 'schema_changed', 'message' => '実際の下書きでは、使われる入力欄が推定と違いました。get-acf-schema を読み直してください（schema_fingerprint：' . $real['data']['schema_fingerprint'] . '）' ) ) );
 			}
@@ -344,7 +351,7 @@ final class DraftService {
 		}
 		$est = ( new SchemaReader() )->read( $post_type, 0, $term_list );
 		$fp  = $est['data']['schema_fingerprint'];
-		StructureLock::check( $post_type, $est['data']['field_groups'] );
+		$this->note_structure( StructureLock::check( $post_type, $est['data']['field_groups'] ) );
 		if ( (string) ( $in['schema_fingerprint'] ?? '' ) !== $fp ) {
 			throw new DomainError( 'ACF-001', 'schema_fingerprint mismatch', false, '', array( array( 'path' => 'schema_fingerprint', 'code' => 'schema_changed', 'message' => '入力欄の構造が、読んだときと違います。get-acf-schema を（予定の分類を付けて）読み直してください（いまの schema_fingerprint：' . $fp . '）' ) ) );
 		}
@@ -461,7 +468,7 @@ final class DraftService {
 		}
 		$final_terms = array_replace( $current_terms, $terms_changed );
 		$after       = array() === $terms_changed ? $now : $reader->read( $post_type, $post_id, array(), $final_terms );
-		StructureLock::check( $post_type, $after['data']['field_groups'] );
+		$this->note_structure( StructureLock::check( $post_type, $after['data']['field_groups'] ) );
 		if ( $after['data']['schema_fingerprint'] !== $now['data']['schema_fingerprint'] ) {
 			$this->warnings[] = '分類を変えると、使われる入力欄のグループが変わります（変えた後の構造で確かめました）。';
 		}

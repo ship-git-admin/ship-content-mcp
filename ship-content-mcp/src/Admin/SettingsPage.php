@@ -117,7 +117,7 @@ final class SettingsPage {
 			}
 			echo '</select></td><td>' . self::verified_cell( $name, $row ) . '</td></tr>';
 		}
-		echo '</tbody></table><p class="description">最初は works だけを使います。「未検証」は読み取りだけ。「試験中」で下書きの保存を試し（作った下書きに試験の印が付き、WP-CLI の cleanup-tests で片付けられます）、実機の試験に合格したら「試験合格」にしてください。「試験合格」「稼働」にしたときの入力欄（ACF）の構造を記録し、その後に構造が変わったら、確かめ直すまで書き込みを止めます。</p></td></tr>';
+		echo '</tbody></table><p class="description">最初は works だけを使います。「未検証」は読み取りだけ。「試験中」で下書きの保存を試し（作った下書きに試験の印が付き、WP-CLI の cleanup-tests で片付けられます）、実機の試験に合格したら「試験合格」にしてください。「試験合格」「稼働」にしたときの入力欄（ACF）の構造を記録し、その後に構造が変わったら、AI と「診断」に知らせます（「入力欄が変わったら書き込みを止める」を入にしたときは、確かめ直すまで止めます）。</p></td></tr>';
 		self::checkbox_row( 'reject_privileged', '権限の強いユーザーを拒否する', $s['reject_privileged'], '投稿の編集・公開・アップロード・設定変更などの権限を持つユーザーは、MCP で使えません（推奨）。PM には「' . Consts::ROLE_LABEL . '」のユーザーを使ってください。' );
 		self::checkbox_row( 'auth_oauth', 'ブラウザで許可してつなぐ（OAuth）', $s['auth_oauth'], '「接続」タブで発行した招待コードを、PM がブラウザの「接続の許可」の画面に入れて許可します。秘密が AI の会話に入りません（おすすめ）。' );
 		echo '<tr><th scope="row">招待コード・許可の期限</th><td>招待コードは <input type="number" name="oauth_invite_days" min="1" max="90" value="' . esc_attr( (string) $s['oauth_invite_days'] ) . '" class="small-text"> 日以内に1回だけ使える。許可した接続は <input type="number" name="oauth_grant_days" min="1" max="365" value="' . esc_attr( (string) $s['oauth_grant_days'] ) . '" class="small-text"> 日で切れる（切れたら、新しい招待コードで許可し直す）。</td></tr>';
@@ -127,6 +127,7 @@ final class SettingsPage {
 		self::checkbox_row( 'auth_signature', '端末の署名で認証する', $s['auth_signature'], 'パスワードを通信に乗せません。HTTP の動作確認URLや、Basic 認証のあるサイトでも使えます。' );
 		self::checkbox_row( 'auth_app_password', 'Application Password で認証する', $s['auth_app_password'], 'HTTPS のサイトだけで使えます（WordPress の決まり）。' );
 		echo '<tr><th scope="row"><label for="scm-max">写真の上限</label></th><td><input id="scm-max" type="number" name="media_max_mb" min="1" max="100" value="' . esc_attr( (string) $s['media_max_mb'] ) . '" class="small-text"> MB<p class="description">写真は JPEG・PNG・WebP だけ受け付けます（URL からの取得はしません）。</p></td></tr>';
+		self::checkbox_row( 'structure_strict', '入力欄が変わったら書き込みを止める', $s['structure_strict'], '「試験合格」「稼働」の投稿タイプで、ACF の入力欄の構造が、確かめた後に変わったら、確かめ直すまで AI の書き込みを止めます。切（初期）なら止めずに、AI と「診断」に知らせます（AI は保存のたびに今の構造で確かめるので、形の合わない値は入りません）。' );
 		self::checkbox_row( 'strip_metadata', '写真の位置情報などを消す', $s['strip_metadata'], '撮影場所（GPS）・カメラの情報などのメタデータを、登録の前に消します（向きは写真に反映してから消します）。お客様の住所が分かってしまうのを防ぐため、有効のままにしてください。' );
 		echo '<tr><th scope="row">メディアの公開範囲</th><td><p class="description" style="color:#b32d2e">' . esc_html( \ShipContentMcp\Media\UploadService::PUBLIC_NOTICE ) . '</p></td></tr>';
 		echo '<tr><th scope="row"><label for="scm-ip">接続元の制限</label></th><td><textarea id="scm-ip" name="ip_allowlist" rows="4" cols="40" class="code">' . esc_textarea( implode( "\n", $s['ip_allowlist'] ) ) . '</textarea><p class="description">1行に1つ（IP または CIDR）。空なら制限しません。サーバーが受け取った接続元（REMOTE_ADDR）だけを見ます。</p></td></tr>';
@@ -506,7 +507,7 @@ final class SettingsPage {
 			'post_types'   => array(),
 			'ip_allowlist' => preg_split( '/\R/', (string) wp_unslash( $_POST['ip_allowlist'] ?? '' ) ),
 		);
-		foreach ( array( 'enabled', 'disable_default_server', 'reject_privileged', 'auth_oauth', 'oauth_remote_clients', 'auth_token', 'token_http', 'auth_signature', 'auth_app_password', 'strip_metadata' ) as $k ) {
+		foreach ( array( 'enabled', 'disable_default_server', 'reject_privileged', 'auth_oauth', 'oauth_remote_clients', 'auth_token', 'token_http', 'auth_signature', 'auth_app_password', 'strip_metadata', 'structure_strict' ) as $k ) {
 			$in[ $k ] = ! empty( $_POST[ $k ] );
 		}
 		$in['oauth_invite_days'] = isset( $_POST['oauth_invite_days'] ) ? absint( $_POST['oauth_invite_days'] ) : 7;
@@ -688,7 +689,7 @@ final class SettingsPage {
 			$now = null;
 		}
 		if ( null !== $now && $now != $v['groups'] ) { // phpcs:ignore Universal.Operators.StrictComparisons -- 順番は問わない
-			$out .= '<br><strong style="color:#b32d2e">記録の後に構造が変わっています（確かめ直すまで書き込みを止めます）</strong>';
+			$out .= ! empty( Settings::get()['structure_strict'] ) ? '<br><strong style="color:#b32d2e">記録の後に構造が変わっています（確かめ直すまで書き込みを止めます）</strong>' : '<br><strong style="color:#996800">記録の後に構造が変わっています（書き込みは止めず、AI に知らせています）</strong>';
 		}
 		$out .= '<br><label><input type="checkbox" name="reverify[' . esc_attr( $name ) . ']" value="1"> いまの構造を確かめ直した</label>';
 		return $out;

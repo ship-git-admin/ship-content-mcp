@@ -192,6 +192,16 @@ $check(
 	&& str_contains( $pgs, '2回失敗したら' ) && str_contains( $pgs, 'MEDIA-001' ) && str_contains( $pgs, 'MEDIA-002' ) && str_contains( $pgs, 'MEDIA-003' ) && str_contains( $pgs, '12MB' ) && str_contains( $pgs, '管理画面・ログイン・ブラウザで代わりに上げない' )
 	&& str_contains( $abil_src, "'photos' => self::photo_guide(" ) && str_contains( $ins, 'meta.photos' )
 );
+$sl_src  = (string) file_get_contents( __DIR__ . '/../../ship-content-mcp/src/Content/StructureLock.php' );
+$set_src = (string) file_get_contents( __DIR__ . '/../../ship-content-mcp/src/Core/Settings.php' );
+$ds_src  = (string) file_get_contents( __DIR__ . '/../../ship-content-mcp/src/Content/DraftService.php' );
+$sn      = \ShipContentMcp\Content\StructureLock::notice( array( 'group_example' ) );
+$check(
+	'入力欄の構造が変わっても、初期は止めずに知らせる（止めるのは structure_strict が入のときだけ。0.9.9）',
+	str_contains( $set_src, "'structure_strict'       => false," ) && str_contains( $sl_src, "if ( ! empty( Settings::get()['structure_strict'] ) ) {" ) && str_contains( $sl_src, 'return self::notice( $diff );' )
+	&& 3 === substr_count( $ds_src, '$this->note_structure( StructureLock::check(' ) && ! str_contains( $ds_src, "\t\tStructureLock::check(" )
+	&& str_contains( $sn, 'group_example' ) && str_contains( $sn, '書き込みは止めていません' ) && str_contains( $sn, 'get-acf-schema' ) && str_contains( $sn, '管理者に確かめ直して' )
+);
 $us_src = (string) file_get_contents( __DIR__ . '/../../ship-content-mcp/src/Media/UploadService.php' );
 $check( '写真の URL から取り込む：wp_safe_remote_get・http(s) だけ・大きさの上限・中身で判定・ホスト名だけ記録', str_contains( $us_src, 'wp_safe_remote_get(' ) && str_contains( $us_src, "array( 'http', 'https' )" ) && str_contains( $us_src, 'wp_http_validate_url( $url )' ) && str_contains( $us_src, "'limit_response_size' => \$max + 1" ) && str_contains( $us_src, 'ImageSniff::sniff( substr( $body, 0, 16 ) )' ) && in_array( 'ship-content/import-image-url', \ShipContentMcp\MCP\Abilities::TOOLS, true ) );
 

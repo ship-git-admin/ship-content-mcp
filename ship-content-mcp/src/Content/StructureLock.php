@@ -4,7 +4,10 @@
  *
  * - 状態を「試験合格」「稼働」にしたとき（または確かめ直したとき）に、その投稿タイプで使われうる ACF のグループの指紋を記録する。
  *   分類などで切り替わるグループも含める（新しい下書きの推定と、分類の条件を1つずつ当てはめた推定を合わせる）。
- * - 「試験合格」「稼働」の投稿タイプに書くとき、使われるグループが記録と同じでなければ止める（ACF-003）。
+ * - 「試験合格」「稼働」の投稿タイプに書くとき、使われるグループが記録と違えば、AI に知らせる（返事の warnings）。
+ *   基本設定の structure_strict（入力欄が変わったら書き込みを止める）が入のときだけ止める（ACF-003）。
+ *   0.9.8 までは常に止めていた。AI は保存のたびに今の構造で確かめるので、形の合わない値は入らない。止めると、文字数の上限を足しただけでも
+ *   作業が止まり、AI には直せないため、初期は知らせるだけにした（0.9.9、ユーザーの判断）。
  *   「試験中」は試験のための状態なので止めない。
  * - グループの指紋は、ラベル・説明文を含めない（SchemaReader::fingerprint と同じ考え方）。
  *
@@ -123,18 +126,37 @@ final class StructureLock {
 	}
 
 	/**
-	 * 「試験合格」「稼働」なら、確かめた構造と同じかを確かめる。
+	 * 「試験合格」「稼働」なら、確かめた構造と同じかを確かめる。違えば、知らせる文を返す（止める設定のときは止める）。
 	 *
 	 * @param list<array<string,mixed>> $groups 書こうとしている投稿で使われるグループ
-	 * @throws DomainError ACF-003
+	 * @return string 知らせる文（同じなら空）
+	 * @throws DomainError ACF-003（structure_strict が入のときだけ）
 	 */
-	public static function check( string $post_type, array $groups ): void {
+	public static function check( string $post_type, array $groups ): string {
 		if ( ! in_array( PostTypes::status( $post_type ), self::LOCKED_STATUSES, true ) ) {
-			return;
+			return '';
 		}
 		$diff = self::differences( $post_type, $groups );
-		if ( array() !== $diff ) {
+		if ( array() === $diff ) {
+			return '';
+		}
+		if ( ! empty( Settings::get()['structure_strict'] ) ) {
 			throw new DomainError( 'ACF-003', 'structure not verified: ' . implode( ',', array_slice( $diff, 0, 10 ) ) );
 		}
+		return self::notice( $diff );
+	}
+
+	/**
+	 * 構造が変わったときに AI へ返す文。
+	 *
+	 * @param list<string> $keys 記録と違うグループの key
+	 */
+	public static function notice( array $keys ): string {
+		$names = array();
+		foreach ( array_slice( $keys, 0, 10 ) as $k ) {
+			$g       = function_exists( 'acf_get_field_group' ) ? acf_get_field_group( $k ) : null;
+			$names[] = is_array( $g ) && '' !== (string) ( $g['title'] ?? '' ) ? (string) $g['title'] : $k;
+		}
+		return '入力欄（ACF）の構造が、サイト管理者が確かめた後に変わっています（' . implode( '、', $names ) . '）。書き込みは止めていません。get-acf-schema の今の構造（field key・文字数の上限・選択肢）に従ってください。制作方針に今はない欄の名前があれば、PM に伝えてください。PM には「入力欄が変わったので、管理者に確かめ直してもらってください」と伝えてください。';
 	}
 }

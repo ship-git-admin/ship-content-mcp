@@ -239,12 +239,12 @@ $check( '返す形に、ACF の値やグループの内部情報（ID・hide_on_
 use ShipContentMcp\Content\StructureLock;
 use ShipContentMcp\Core\Settings;
 $GLOBALS['fx_groups'] = $build( $fixture );
-$set_status = static function ( string $status, ?array $verified ) {
+$set_status = static function ( string $status, ?array $verified, bool $strict = false ) {
 	$row = array( 'enabled' => true, 'status' => $status );
 	if ( null !== $verified ) {
 		$row['verified'] = $verified;
 	}
-	$GLOBALS['fx_opt'][ Settings::OPTION ] = array( 'post_types' => array( 'works' => $row ) );
+	$GLOBALS['fx_opt'][ Settings::OPTION ] = array( 'post_types' => array( 'works' => $row ), 'structure_strict' => $strict );
 	Settings::flush();
 };
 $cur = StructureLock::current( 'works' );
@@ -252,8 +252,7 @@ $check( '構造の記録：分類で切り替わるグループも含む', array
 $groups_now = ( new SchemaReader() )->read( 'works' )['data']['field_groups'];
 $lock_code  = static function ( callable $fn ): string {
 	try {
-		$fn();
-		return 'ok';
+		return '' === $fn() ? 'ok' : 'notice';
 	} catch ( DomainError $e ) {
 		return $e->error_code();
 	}
@@ -261,14 +260,18 @@ $lock_code  = static function ( callable $fn ): string {
 $set_status( 'testing', null );
 $check( '試験中は記録がなくても止めない', 'ok' === $lock_code( fn() => StructureLock::check( 'works', $groups_now ) ) );
 $set_status( 'tested', null );
-$check( '試験合格で記録がなければ止める（ACF-003）', 'ACF-003' === $lock_code( fn() => StructureLock::check( 'works', $groups_now ) ) );
+$check( '試験合格で記録がなければ、止めずに知らせる（初期。0.9.9）', 'notice' === $lock_code( fn() => StructureLock::check( 'works', $groups_now ) ) );
+$set_status( 'tested', null, true );
+$check( '止める設定なら、試験合格で記録がなければ止める（ACF-003）', 'ACF-003' === $lock_code( fn() => StructureLock::check( 'works', $groups_now ) ) );
 $set_status( 'tested', array( 'groups' => $cur, 'at' => 1, 'by' => 1 ) );
 $check( '試験合格・記録と同じなら通す', 'ok' === $lock_code( fn() => StructureLock::check( 'works', $groups_now ) ) );
 $GLOBALS['fx_groups'] = $build( $fx2 );
 $check( 'ラベル・選択肢の表示名だけの変更なら通す', 'ok' === $lock_code( fn() => StructureLock::check( 'works', ( new SchemaReader() )->read( 'works' )['data']['field_groups'] ) ) );
 $GLOBALS['fx_groups'] = $build( $fx4 );
 $changed = ( new SchemaReader() )->read( 'works' )['data']['field_groups'];
-$check( '選択肢が増えたら止める（ACF-003）', 'ACF-003' === $lock_code( fn() => StructureLock::check( 'works', $changed ) ) );
+$check( '選択肢が増えたら、止めずに知らせる（初期）', 'notice' === $lock_code( fn() => StructureLock::check( 'works', $changed ) ) && str_contains( StructureLock::check( 'works', $changed ), '書き込みは止めていません' ) );
+$set_status( 'tested', array( 'groups' => $cur, 'at' => 1, 'by' => 1 ), true );
+$check( '止める設定なら、選択肢が増えたら止める（ACF-003）', 'ACF-003' === $lock_code( fn() => StructureLock::check( 'works', $changed ) ) );
 $check( '違うグループを教える', array( 'group_EXAMPLE_FAKE_001' ) === StructureLock::differences( 'works', $changed ) );
 $set_status( 'active', array( 'groups' => StructureLock::current( 'works' ), 'at' => 2, 'by' => 1 ) );
 $check( '確かめ直せば通す（稼働）', 'ok' === $lock_code( fn() => StructureLock::check( 'works', $changed ) ) );

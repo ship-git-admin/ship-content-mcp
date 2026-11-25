@@ -11,6 +11,7 @@
  * - auth_oauth：ブラウザで許可する接続（OAuth。招待コード）。oauth_invite_days：招待コードの期限（日、初期 7）。oauth_grant_days：許可の期限（日、初期 90）。
  *   oauth_remote_clients：戻り先が https の AI（Claude の Web 版など、AI の会社のサーバーからつなぐもの）も許す（初期は許さない）。
  * - auth_signature / auth_app_password：使ってよい認証の方法。
+ * - structure_strict：入力欄の構造が、管理者が確かめた後に変わったら書き込みを止める（初期は止めずに知らせる。0.9.9）。
  * - media_max_mb：写真1枚の上限（MB、1〜100）。strip_metadata：写真の位置情報などのメタデータを消す（初期は消す）。
  *
  * @package ShipContentMcp
@@ -61,6 +62,7 @@ final class Settings {
 			'auth_app_password'      => true,
 			'media_max_mb'           => 20,
 			'strip_metadata'         => true,
+			'structure_strict'       => false,
 		);
 	}
 
@@ -100,7 +102,7 @@ final class Settings {
 	public static function sanitize( array $in, bool $use_default_types ): array {
 		$d   = self::defaults();
 		$out = $d;
-		foreach ( array( 'enabled', 'disable_default_server', 'reject_privileged', 'auth_oauth', 'oauth_remote_clients', 'auth_token', 'token_http', 'auth_signature', 'auth_app_password', 'strip_metadata' ) as $k ) {
+		foreach ( array( 'enabled', 'disable_default_server', 'reject_privileged', 'auth_oauth', 'oauth_remote_clients', 'auth_token', 'token_http', 'auth_signature', 'auth_app_password', 'strip_metadata', 'structure_strict' ) as $k ) {
 			$out[ $k ] = array_key_exists( $k, $in ) ? self::bool( $in[ $k ] ) : $d[ $k ];
 		}
 		$out['oauth_invite_days'] = isset( $in['oauth_invite_days'] ) && is_numeric( $in['oauth_invite_days'] ) ? max( 1, min( 90, (int) $in['oauth_invite_days'] ) ) : $d['oauth_invite_days'];

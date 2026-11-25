@@ -139,8 +139,15 @@ final class Diagnostics {
 			} catch ( \Throwable $e ) {
 				$now = array();
 			}
-			$same = array() !== $verified && $now == $verified; // phpcs:ignore Universal.Operators.StrictComparisons -- 順番は問わない
-			$add( 'structure_' . $pt, '確かめた構造：' . $pt, $same ? 'ok' : 'ng', $same ? count( $verified ) . 'グループ（記録と同じ）' : '記録の後に入力欄の構造が変わったか、記録がありません（書き込みを止めています）', $same ? '' : '入力欄の変更が意図どおりか確かめてから、基本設定で「いまの構造を確かめ直した」にチェックを入れて保存してください' );
+			$same   = array() !== $verified && $now == $verified; // phpcs:ignore Universal.Operators.StrictComparisons -- 順番は問わない
+			$strict = ! empty( $settings['structure_strict'] );
+			$add(
+				'structure_' . $pt,
+				'確かめた構造：' . $pt,
+				$same ? 'ok' : ( $strict ? 'ng' : 'warn' ),
+				$same ? count( $verified ) . 'グループ（記録と同じ）' : '記録の後に入力欄の構造が変わったか、記録がありません（' . ( $strict ? '書き込みを止めています' : '書き込みは止めず、AI に知らせています' ) . '）',
+				$same ? '' : '入力欄の変更が意図どおりか確かめてから、基本設定で「いまの構造を確かめ直した」にチェックを入れて保存してください'
+			);
 		}
 
 		// その他。
