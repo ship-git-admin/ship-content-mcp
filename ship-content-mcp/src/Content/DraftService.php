@@ -730,7 +730,7 @@ final class DraftService {
 	private function attachment( $v, string $path, array &$errors ): ?int {
 		$id = is_int( $v ) ? $v : ( is_string( $v ) && ctype_digit( $v ) ? (int) $v : 0 );
 		if ( $id <= 0 || 'attachment' !== get_post_type( $id ) || ! wp_attachment_is_image( $id ) ) {
-			$errors[] = array( 'path' => $path, 'code' => 'attachment', 'message' => 'その ID の画像がありません' );
+			$errors[] = array( 'path' => $path, 'code' => 'attachment', 'message' => 'その ID の画像がありません（featured_media には添付 ID を入れる。新しい写真は get-upload-url で登録し、返った attachment_id を使う）' );
 			return null;
 		}
 		return $id;

@@ -43,6 +43,18 @@ final class Abilities {
 	public const FINISH_UPLOAD   = 'ship-content/finish-upload';
 
 	/** 自作サーバーに載せるツール（この順で一覧に出る）。 */
+	/** 最初に呼ぶ list-post-types の返事に付ける、全部の手順（AI がツールを探さなくても、写真まで進めるように。0.9.5）。 */
+	public const STEPS = array(
+		'1. get-creation-policy と get-acf-schema で、制作方針と入力欄を読む（参考にする記事は search-posts・get-post）。',
+		'2. 写真・画像があれば、get-upload-url で1枚ずつメディアに登録する（返ってきた curl を実行）。コマンドを実行できないときは prepare-upload → upload-chunk → finish-upload。返った attachment_id を、画像の欄や featured_media に入れる。',
+		'3. validate-draft で確かめ、PM に見せてから、create-draft（新しい下書き）か update-draft（下書きを直す）で保存する。',
+		'4. 保存した後は get-post で読み戻す。',
+		'ツールが見つからない・使えないときも、WordPress の管理画面・ログイン・ブラウザで代わりをしない。',
+	);
+
+	/** get-acf-schema の返事に付ける、画像の欄の入れ方。 */
+	public const IMAGE_HINT = '画像の欄（type が image）と featured_media には、メディアの添付 ID（数）を入れる。新しい写真は get-upload-url（コマンドを実行できなければ prepare-upload → upload-chunk → finish-upload）で登録し、返った attachment_id を使う。URL は入れられない。';
+
 	public const TOOLS = array( self::LIST_POST_TYPES, self::GET_POLICY, self::GET_ACF_SCHEMA, self::SEARCH_POSTS, self::GET_POST, self::VALIDATE_DRAFT, self::CREATE_DRAFT, self::UPDATE_DRAFT, self::GET_UPLOAD_URL, self::PREPARE_UPLOAD, self::UPLOAD_CHUNK, self::FINISH_UPLOAD );
 
 	/** 成功を記録しないツール（分割の数だけ行が増えるため。失敗は記録する）。 */
@@ -223,7 +235,7 @@ final class Abilities {
 		self::add(
 			self::LIST_POST_TYPES,
 			'使える投稿タイプの一覧',
-			'最初に呼ぶ。このサイトで MCP から下書きを作ってよい投稿タイプと、その分類・状態・書き込めるか（writable）を返す。次に get-creation-policy と get-acf-schema を呼ぶ。',
+			'Start here（最初に呼ぶ）。このサイトで MCP から下書きを作ってよい投稿タイプと、その分類・状態・書き込めるか（writable）を返す。返事の meta.steps に、写真の登録を含む全部の手順がある。次に get-creation-policy と get-acf-schema を呼ぶ。',
 			array(
 				'type'                 => 'object',
 				'additionalProperties' => false,
@@ -382,7 +394,7 @@ final class Abilities {
 		self::add(
 			self::GET_UPLOAD_URL,
 			'写真のアップロード用 URL をもらう',
-			'写真（JPEG・PNG・WebP）をメディアに登録するための、1回だけ使える URL（30分）と、そのまま使える curl のコマンドを返す。シェルのコマンドを実行できる AI は、これを使うのがいちばん簡単：command の <写真のファイルのパス> を手元の写真のパスに置き換えて実行すると、返事の JSON に attachment_id と URL が入っている。1枚ごとに呼ぶ。コマンドを実行できない AI は prepare-upload → upload-chunk → finish-upload を使う。写真は必ずこのツールたちで登録する（WordPress の管理画面やブラウザで上げない。PM のログインは要らない）。' . UploadService::PUBLIC_NOTICE,
+			'Upload a photo / image file to the WordPress media library（写真・画像をメディアに登録する。ふつうはこれを使う）。写真（JPEG・PNG・WebP）を登録するための、1回だけ使える URL（30分）と、そのまま使える curl のコマンドを返す。シェルのコマンドを実行できる AI は、これを使うのがいちばん簡単：command の <写真のファイルのパス> を手元の写真のパスに置き換えて実行すると、返事の JSON に attachment_id と URL が入っている。1枚ごとに呼ぶ。コマンドを実行できない AI は prepare-upload → upload-chunk → finish-upload を使う。写真は必ずこのツールたちで登録する（WordPress の管理画面やブラウザで上げない。PM のログインは要らない）。' . UploadService::PUBLIC_NOTICE,
 			array(
 				'type'                 => 'object',
 				'properties'           => array(
@@ -417,7 +429,7 @@ final class Abilities {
 		self::add(
 			self::PREPARE_UPLOAD,
 			'写真の転送を始める',
-			'写真（JPEG・PNG・WebP）をメディアに登録する転送を始める。ファイル名・MIME・大きさ・ファイル全体の SHA-256 を送ると、upload_session_id と分割の大きさ（chunk_size）を返す。同じ写真がすでに登録されていれば attachment_id を返す（転送は不要）。シェルのコマンドを実行できる AI は get-upload-url を使う方が簡単。中継プログラムを使っているときは ship-content-upload-local-image を使えば、この3つのツールを自分で呼ぶ必要はない。' . UploadService::PUBLIC_NOTICE,
+			'Upload a photo / image without shell commands, step 1 of 3（写真・画像をコマンドなしで登録する1つ目）。写真（JPEG・PNG・WebP）をメディアに登録する転送を始める。ファイル名・MIME・大きさ・ファイル全体の SHA-256 を送ると、upload_session_id と分割の大きさ（chunk_size）を返す。続けて upload-chunk → finish-upload。同じ写真がすでに登録されていれば attachment_id を返す（転送は不要）。シェルのコマンドを実行できる AI は get-upload-url を使う方が簡単。' . UploadService::PUBLIC_NOTICE,
 			array(
 				'type'                 => 'object',
 				'properties'           => array(
@@ -449,7 +461,7 @@ final class Abilities {
 		self::add(
 			self::UPLOAD_CHUNK,
 			'写真の分割を送る',
-			'prepare-upload の後に、写真を chunk_size ごとに分けて送る（index は 0 から、content_base64 は分割の base64、chunk_sha256 は分割の SHA-256）。同じ index を同じ中身で送り直してもよい。',
+			'Upload a photo / image, step 2 of 3（写真の登録の2つ目）。prepare-upload の後に、写真を chunk_size ごとに分けて送る（index は 0 から、content_base64 は分割の base64、chunk_sha256 は分割の SHA-256）。同じ index を同じ中身で送り直してもよい。',
 			array(
 				'type'                 => 'object',
 				'properties'           => array(
@@ -476,7 +488,7 @@ final class Abilities {
 		self::add(
 			self::FINISH_UPLOAD,
 			'写真の転送を仕上げる',
-			'すべての分割を送った後に呼ぶ。写真全体を確かめ、位置情報などのメタデータを消して、メディアに登録し attachment_id と URL を返す。attachment_id は ACF の画像の欄や featured_media に、URL（url_large）は本文（post_content）の img に使う。' . UploadService::PUBLIC_NOTICE,
+			'Upload a photo / image, step 3 of 3（写真の登録の3つ目）。upload-chunk ですべての分割を送った後に呼ぶ。写真全体を確かめ、位置情報などのメタデータを消して、メディアに登録し attachment_id と URL を返す。attachment_id は ACF の画像の欄や featured_media に、URL（url_large）は本文（post_content）の img に使う。' . UploadService::PUBLIC_NOTICE,
 			array(
 				'type'                 => 'object',
 				'properties'           => array(
@@ -584,7 +596,10 @@ final class Abilities {
 		return array(
 			'data'     => array( 'post_types' => $rows ),
 			'warnings' => $warnings,
-			'meta'     => array( 'notice' => '下書きの作成・修正ができるのは writable が true の投稿タイプだけです。公開・削除はできません。' ),
+			'meta'     => array(
+				'notice' => '下書きの作成・修正ができるのは writable が true の投稿タイプだけです。公開・削除はできません。',
+				'steps'  => self::STEPS,
+			),
 		);
 	}
 
@@ -626,7 +641,10 @@ final class Abilities {
 		return array(
 			'data'     => $out['data'],
 			'warnings' => $out['warnings'],
-			'meta'     => array( 'notice' => 'field key・レイアウトは毎回この結果のものを使ってください。' ),
+			'meta'     => array(
+				'notice' => 'field key・レイアウトは毎回この結果のものを使ってください。',
+				'images' => self::IMAGE_HINT,
+			),
 		);
 	}
 

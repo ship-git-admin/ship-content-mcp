@@ -166,6 +166,18 @@ $e1 = new \ShipContentMcp\Core\DomainError( 'WRITE-001' );
 $e2 = new \ShipContentMcp\Core\DomainError( 'ACF-001' );
 $check( '誤りのコードすべてに「誰が直すか」と「次にすること」がある', $fix_ok && 'admin' === $e1->who_fixes() && 'ai' === $e2->who_fixes() && str_contains( $e1->next_step(), '管理者に送る文' ) );
 
+// AI がツールを探さなくても写真まで進める（0.9.5）：サーバーの案内・最初の返事・写真のツールの説明。
+$tool_short = array_map( static fn( $t ) => substr( $t, strlen( 'ship-content/' ) ), \ShipContentMcp\MCP\Abilities::TOOLS );
+$ins        = \ShipContentMcp\MCP\Server::INSTRUCTIONS;
+$check(
+	'サーバーの案内に、全部のツールの名前・写真の登録の仕方（英語の言葉も）・代わりをしないことがある',
+	array() === array_filter( $tool_short, static fn( $t ) => ! str_contains( $ins, $t ) ) && str_contains( $ins, 'photo / image' ) && str_contains( $ins, 'attachment_id' ) && str_contains( $ins, 'ブラウザで代わりをしない' ) && mb_strlen( $ins ) <= 600
+);
+$steps = implode( "\n", \ShipContentMcp\MCP\Abilities::STEPS );
+$check( '最初のツール（list-post-types）の返事の手順に、写真の登録から保存までがある', str_contains( $steps, 'get-upload-url' ) && str_contains( $steps, 'prepare-upload → upload-chunk → finish-upload' ) && str_contains( $steps, 'validate-draft' ) && str_contains( $steps, 'create-draft' ) && str_contains( $steps, 'update-draft' ) && str_contains( \ShipContentMcp\MCP\Abilities::IMAGE_HINT, 'get-upload-url' ) );
+$abil_src = (string) file_get_contents( __DIR__ . '/../../ship-content-mcp/src/MCP/Abilities.php' );
+$check( '写真の4つのツールの説明に英語の言葉（Upload a photo / image）があり、ない名前（upload-local-image）を書かない', 4 === substr_count( $abil_src, "'Upload a photo / image" ) && ! str_contains( $abil_src, 'upload-local-image' ) && ! str_contains( $ins, 'upload-local-image' ) );
+
 // 使い方タブ：使う画像がすべてあり、文にサイト固有の名前がない。
 $help_src = (string) file_get_contents( __DIR__ . '/../../ship-content-mcp/src/Admin/HelpPage.php' );
 preg_match_all( "/self::fig\\( '([a-z0-9_]+)'/", $help_src, $hm );

@@ -333,13 +333,13 @@ final class Validator {
 			return '';
 		}
 		if ( ! is_int( $v ) && ! ( is_string( $v ) && ctype_digit( $v ) ) ) {
-			$this->err( $path, 'type', '画像の添付 ID（数）を入れてください（URL は受け付けません）' );
+			$this->err( $path, 'type', '画像の添付 ID（数）を入れてください（URL は受け付けません）。新しい写真は get-upload-url で登録し、返った attachment_id を入れる' );
 			return null;
 		}
 		$id   = (int) $v;
 		$post = get_post( $id );
 		if ( ! $post || 'attachment' !== $post->post_type || ! wp_attachment_is_image( $id ) ) {
-			$this->err( $path, 'attachment', 'その ID の画像がありません：' . $id );
+			$this->err( $path, 'attachment', 'その ID の画像がありません：' . $id . '（新しい写真は get-upload-url で登録し、返った attachment_id を入れる）' );
 			return null;
 		}
 		$types = trim( (string) ( $f['mime_types'] ?? '' ) );

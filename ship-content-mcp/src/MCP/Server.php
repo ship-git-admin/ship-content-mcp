@@ -20,6 +20,14 @@ defined( 'ABSPATH' ) || exit;
 
 final class Server {
 
+	/**
+	 * サーバーの案内（initialize の instructions）。
+	 *
+	 * AI のアプリは、これを会話の初めに入れたり（Claude Code）、どのツールの説明にも付けたり（Codex）する。
+	 * ツールが最初は見えず、AI が名前や説明で探す形のアプリもあるので、全部のツールの名前と順番・写真の登録の仕方を、英語の言葉も入れて短く書く（0.9.5）。
+	 */
+	public const INSTRUCTIONS = 'WordPress の下書きを作る・直すツール（Ship Content MCP。読み取り・検証・下書きの保存・写真の登録だけ。公開・予約・削除はできません）。順番：list-post-types → get-creation-policy → get-acf-schema →（search-posts・get-post）→ validate-draft → create-draft か update-draft。写真・画像（photo / image upload to the media library）は get-upload-url で1枚ずつ登録する（返ってきた curl を実行）。コマンドを実行できないときは prepare-upload → upload-chunk → finish-upload。返った attachment_id を画像の欄や featured_media に入れる。WordPress の管理画面・ログイン・ブラウザで代わりをしないでください。';
+
 	private static string $last_error = '';
 
 	/**
@@ -42,7 +50,7 @@ final class Server {
 				Consts::NS,
 				Consts::ROUTE,
 				'Ship Content MCP',
-				'許可された投稿タイプの下書きを作る・直すためのツール（読み取り・検証・下書きの保存のみ。公開・予約・削除はできません）。',
+				self::INSTRUCTIONS,
 				SHIP_CONTENT_MCP_VERSION,
 				array( $transport ),
 				class_exists( $errors ) ? $errors : null,

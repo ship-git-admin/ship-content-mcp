@@ -3,7 +3,7 @@ Contributors: shipinc
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.9.4
+Stable tag: 0.9.5
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -17,6 +17,9 @@ WordPress 側では AI を呼びません。公開・予約・削除・ACF の�
 読み取り（投稿タイプ・制作方針・入力欄の構造・記事）、下書きの検証・作成・修正、写真の分割転送のツールがあります。
 
 == Changelog ==
+
+= 0.9.5 =
+* AI がツールを名前や説明で探すアプリ（Codex など）でも、写真の登録まで迷わないようにした（サーバーの案内・最初のツールの返事・誤りに、写真の登録の仕方とツールの名前を入れた。写真のツールの説明に英語の言葉を足した）。
 
 = 0.9.4 =
 * ブラウザで許可した接続のアクセストークンを、接続の期限（初期 90日）まで使えるようにした（トークンを延長しない AI のアプリ、たとえば Codex で、1時間ほどでつながらなくなっていたため）。止めればその場で使えなくなるのは同じ。
