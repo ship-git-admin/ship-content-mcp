@@ -139,7 +139,7 @@ final class SettingsPage {
 	private static function tab_policy(): void {
 		$p     = Policies::get();
 		$types = PostTypes::allowed();
-		echo '<p>AI は記事を作る前に、この方針を毎回読みます。入力欄の field key と結び付けないので、ACF の構造が変わっても書き直さなくて構いません。「基本〜」は推奨、絶対に守らせたいことは PM の確認や、今後の機能（検証）で扱います。</p>';
+		echo '<p>AI は、つないで最初に呼ぶツール（list-post-types）でこの方針を受け取り、それに従って書きます。作業の途中で変えたときは、AI が保存の前に新しい版を読み直します。入力欄の field key と結び付けないので、ACF の構造が変わっても書き直さなくて構いません。「基本〜」は推奨、絶対に守らせたいことは PM の確認や、今後の機能（検証）で扱います。</p>';
 		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
 		wp_nonce_field( 'ship_content_mcp_save_policies' );
 		echo '<input type="hidden" name="action" value="ship_content_mcp_save_policies">';

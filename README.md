@@ -8,7 +8,7 @@
 - 制作方針は、管理画面に自然な文章で書きます（サイト共通・投稿タイプ別）。
 - 公開・予約・削除・ACF の定義の変更・テーマやプラグインの変更は、できません。
 
-> 版 0.9.9。PM の試運用の前の段階です。
+> 版 0.9.10。PM の試運用の前の段階です。
 
 ## 必要なもの
 
@@ -96,7 +96,7 @@ HTTPS のサイトでは、WordPress の Application Password でも接続でき
 | ツール | すること |
 |---|---|
 | `ship-content-list-post-types` | 使える投稿タイプ・分類・状態・書き込めるか |
-| `ship-content-get-creation-policy` | 制作方針（サイト共通・投稿タイプ別） |
+| `ship-content-get-creation-policy` | 制作方針（サイト共通・投稿タイプ別）。同じものが `list-post-types` の返事（`creation_policy`）にも入る。途中で変わったときの読み直し用 |
 | `ship-content-get-acf-schema` | 入力欄（ACF）の構造（field key・型・選択肢・レイアウト・入れ子・条件表示）と `schema_fingerprint` |
 | `ship-content-search-posts` | 記事を探す（公開済み・下書き） |
 | `ship-content-get-post` | 記事を読む（ACF の値は保存されたままの形。`if_match` 付き） |

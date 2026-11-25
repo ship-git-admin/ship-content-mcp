@@ -3,7 +3,7 @@ Contributors: shipinc
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.9.9
+Stable tag: 0.9.10
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -17,6 +17,9 @@ WordPress 側では AI を呼びません。公開・予約・削除・ACF の�
 読み取り（投稿タイプ・制作方針・入力欄の構造・記事）、下書きの検証・作成・修正、写真の登録（アップロード用 URL・分割転送・URL からの取り込み）のツールがあります。
 
 == Changelog ==
+
+= 0.9.10 =
+* 最初のツール（list-post-types）の返事に、制作方針を入れた（AI が制作に入る前に必ず受け取る）。下書きの確かめ・作成・修正の返事に、今の方針の版を付けた（途中で変わったら AI が読み直す）。
 
 = 0.9.9 =
 * 入力欄（ACF）の構造が、管理者の確かめた後に変わっても、書き込みを止めずに AI と診断に知らせるようにした（初期）。止めたいサイトは、基本設定の「入力欄が変わったら書き込みを止める」を入にする。

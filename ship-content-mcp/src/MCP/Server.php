@@ -26,7 +26,7 @@ final class Server {
 	 * AI のアプリは、これを会話の初めに入れたり（Claude Code）、どのツールの説明にも付けたり（Codex）する。
 	 * ツールが最初は見えず、AI が名前や説明で探す形のアプリもあるので、全部のツールの名前と順番・写真の登録の仕方を、英語の言葉も入れて短く書く（0.9.5）。
 	 */
-	public const INSTRUCTIONS = 'WordPress の下書きを作る・直すツール（Ship Content MCP。読み取り・検証・下書きの保存・写真の登録だけ。公開・予約・削除はできません）。順番：list-post-types → get-creation-policy → get-acf-schema →（search-posts・get-post）→ validate-draft → create-draft か update-draft。写真・画像（photo / image upload to the media library）は1枚ずつ登録する：写真の URL があれば import-image-url、手元のファイルは get-upload-url（返ってきた curl を実行）、コマンドでネットワークにつなげないときは prepare-upload → upload-chunk → finish-upload（base64 は自分で書き写さず、コマンドの出力をそのまま渡す）。返った attachment_id を画像の欄や featured_media に入れる。取り込めないときの手順は list-post-types の返事（meta.photos）。WordPress の管理画面・ログイン・ブラウザで代わりをしないでください。';
+	public const INSTRUCTIONS = 'WordPress の下書きを作る・直すツール（Ship Content MCP。公開・予約・削除はできません）。最初に list-post-types を呼ぶ（制作方針と手順が返る。記事は制作方針に従って書く。読み直しは get-creation-policy）→ get-acf-schema →（search-posts・get-post）→ validate-draft → create-draft か update-draft。写真・画像（photo / image upload to the media library）は1枚ずつ登録する：写真の URL があれば import-image-url、手元のファイルは get-upload-url（返ってきた curl を実行）、コマンドでネットワークにつなげないときは prepare-upload → upload-chunk → finish-upload（base64 は自分で書き写さず、コマンドの出力をそのまま渡す）。返った attachment_id を画像の欄や featured_media に入れる。取り込めないときの手順は list-post-types の返事（meta.photos）。WordPress の管理画面・ログイン・ブラウザで代わりをしないでください。';
 
 	private static string $last_error = '';
 
