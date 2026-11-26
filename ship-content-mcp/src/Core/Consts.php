@@ -26,7 +26,7 @@ final class Consts {
 	/** MCP を使ってよい人の権限。 */
 	public const CAP = 'ship_content_mcp_access';
 
-	/** 指示者用の低権限ロール。 */
+	/** 制作担当者用の低権限ロール。 */
 	public const ROLE = 'ship_content_operator';
 
 	public const ROLE_LABEL = 'Content MCP Operator';

@@ -77,12 +77,12 @@ final class Diagnostics {
 
 		// 通信経路。
 		$https_home = 0 === strpos( (string) get_option( 'home' ), 'https://' );
-		$add( 'https', 'サイトの URL', $https_home ? 'ok' : 'warn', (string) get_option( 'home' ) . ( $https_home ? '' : '（HTTP。Application Password は使えません。署名方式を使ってください）' ), $https_home ? '' : '指示者には署名方式（中継プログラム）を使ってもらってください' );
+		$add( 'https', 'サイトの URL', $https_home ? 'ok' : 'warn', (string) get_option( 'home' ) . ( $https_home ? '' : '（HTTP。Application Password は使えません。署名方式を使ってください）' ), $https_home ? '' : '制作担当者には署名方式（中継プログラム）を使ってもらってください' );
 		$app_pw = function_exists( 'wp_is_application_passwords_available' ) && wp_is_application_passwords_available();
 		$add( 'app_password', 'Application Password', $app_pw ? 'ok' : 'info', $app_pw ? 'このリクエストでは使えます' : 'このリクエストでは使えません（HTTPS でないなど）' );
 		if ( $include_request ) {
 			$basic = isset( $_SERVER['PHP_AUTH_USER'] ) || isset( $_SERVER['HTTP_AUTHORIZATION'] ) || isset( $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] );
-			$add( 'basic_auth', 'サーバーの Basic 認証', $basic ? 'warn' : 'ok', $basic ? 'この画面の表示に Authorization が付いています（Basic 認証のあるサイト）。Application Password とぶつかるので、署名方式を使ってください' : '見当たりません', $basic ? 'Application Password とぶつかるので、指示者には署名方式を使ってもらってください' : '' );
+			$add( 'basic_auth', 'サーバーの Basic 認証', $basic ? 'warn' : 'ok', $basic ? 'この画面の表示に Authorization が付いています（Basic 認証のあるサイト）。Application Password とぶつかるので、署名方式を使ってください' : '見当たりません', $basic ? 'Application Password とぶつかるので、制作担当者には署名方式を使ってもらってください' : '' );
 			$ip = IpRules::remote_addr();
 			$add( 'remote_addr', 'この画面を開いた接続元（REMOTE_ADDR）', 'info', '' !== $ip ? $ip : '不明' );
 		}
@@ -95,10 +95,10 @@ final class Diagnostics {
 		// ロール・ユーザー・鍵。
 		$role = get_role( Consts::ROLE );
 		if ( ! $role ) {
-			$add( 'role', '指示者用のロール', 'ng', 'ありません（プラグインを一度無効にして、有効にし直してください）', 'プラグインを一度無効にして、有効にし直してください' );
+			$add( 'role', '制作担当者用のロール', 'ng', 'ありません（プラグインを一度無効にして、有効にし直してください）', 'プラグインを一度無効にして、有効にし直してください' );
 		} else {
 			$extra = array_diff( array_keys( array_filter( $role->capabilities ) ), array( 'read', Consts::CAP ) );
-			$add( 'role', '指示者用のロール', array() === $extra ? 'ok' : 'warn', Consts::ROLE_LABEL . ( array() === $extra ? '（read と専用の権限だけ）' : '（ほかの権限が付いています：' . implode( ', ', $extra ) . '）' ), array() === $extra ? '' : 'User Role Editor などで、このロールから read と ship_content_mcp_access 以外の権限を外してください' );
+			$add( 'role', '制作担当者用のロール', array() === $extra ? 'ok' : 'warn', Consts::ROLE_LABEL . ( array() === $extra ? '（read と専用の権限だけ）' : '（ほかの権限が付いています：' . implode( ', ', $extra ) . '）' ), array() === $extra ? '' : 'User Role Editor などで、このロールから read と ship_content_mcp_access 以外の権限を外してください' );
 		}
 		$users = get_users(
 			array(
@@ -113,7 +113,7 @@ final class Diagnostics {
 				++$bad;
 			}
 		}
-		$add( 'operators', 'MCP を使えるユーザー', 0 === count( $users ) ? 'warn' : ( $bad > 0 ? 'warn' : 'ok' ), count( $users ) . '人' . ( $bad > 0 ? '（うち ' . $bad . '人は権限が強すぎるなどで使えません）' : '' ), 0 === count( $users ) ? '「ユーザー → 新規追加」で、権限グループ「' . Consts::ROLE_LABEL . '」のユーザーを指示者ごとに作ってください' : ( $bad > 0 ? '権限の強いユーザーではなく、' . Consts::ROLE_LABEL . ' だけのユーザーを使ってください' : '' ) );
+		$add( 'operators', 'MCP を使えるユーザー', 0 === count( $users ) ? 'warn' : ( $bad > 0 ? 'warn' : 'ok' ), count( $users ) . '人' . ( $bad > 0 ? '（うち ' . $bad . '人は権限が強すぎるなどで使えません）' : '' ), 0 === count( $users ) ? '「ユーザー → 新規追加」で、権限グループ「' . Consts::ROLE_LABEL . '」のユーザーを制作担当者ごとに作ってください' : ( $bad > 0 ? '権限の強いユーザーではなく、' . Consts::ROLE_LABEL . ' だけのユーザーを使ってください' : '' ) );
 		$add( 'keys', '有効な端末の鍵', 'info', DeviceKeys::count_active() . '件' );
 		$fp = SiteKey::fingerprint();
 		$add( 'site_key', 'サイトの鍵（応答の署名）', '' !== $fp ? 'ok' : 'ng', '' !== $fp ? '指紋 ' . $fp : 'ありません', '' !== $fp ? '' : 'プラグインを一度無効にして、有効にし直してください' );

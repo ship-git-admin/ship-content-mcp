@@ -194,7 +194,7 @@ $pg = \ShipContentMcp\MCP\Abilities::photo_guide( 12 );
 $pgs = implode( "\n", array_merge( $pg['by_source'], $pg['when_stuck'] ) );
 $check(
 	'写真の出どころ別の手順と、取り込めないときの案内（0.9.8）：方法の順番・次の方法に移る・誤りのコード・最後は写真なしで下書き・管理画面で代わりをしない',
-	5 === count( $pg['by_source'] ) && str_contains( $pg['by_source'][0], 'import-image-url' ) && str_contains( $pg['by_source'][1], 'get-upload-url' ) && str_contains( $pg['by_source'][2], 'how_to_send' ) && str_contains( $pg['by_source'][3], '指示者に' ) && str_contains( $pg['by_source'][4], '写真なしで下書き' )
+	5 === count( $pg['by_source'] ) && str_contains( $pg['by_source'][0], 'import-image-url' ) && str_contains( $pg['by_source'][1], 'get-upload-url' ) && str_contains( $pg['by_source'][2], 'how_to_send' ) && str_contains( $pg['by_source'][3], '制作担当者に' ) && str_contains( $pg['by_source'][4], '写真なしで下書き' )
 	&& str_contains( $pgs, '2回失敗したら' ) && str_contains( $pgs, 'MEDIA-001' ) && str_contains( $pgs, 'MEDIA-002' ) && str_contains( $pgs, 'MEDIA-003' ) && str_contains( $pgs, '12MB' ) && str_contains( $pgs, '管理画面・ログイン・ブラウザで代わりに上げない' )
 	&& str_contains( $abil_src, "'photos' => self::photo_guide(" ) && str_contains( $ins, 'meta.photos' )
 );
@@ -280,8 +280,8 @@ foreach ( new RecursiveIteratorIterator( new RecursiveDirectoryIterator( __DIR__
 		$pm_left[] = $pf->getFilename();
 	}
 }
-$check( '表示・AI への案内に「PM」を使わない（指示者。誰が直すかは requester。0.9.18）', array() === $pm_left && str_contains( (string) file_get_contents( __DIR__ . '/../../ship-content-mcp/src/Core/DomainError.php' ), "array( 'requester', " ) );
-$check( '使い方タブ：管理者向けと指示者向けの2つのタブに分かれている', str_contains( $sp_src, "'help'        => '使い方（管理者向け）'" ) && str_contains( $sp_src, "'help_pm'     => '使い方（指示者向け）'" ) && str_contains( $sp_src, "HelpPage::render( 'pm' )" ) && str_contains( $sp_src, "HelpPage::render( 'admin' )" ) && str_contains( $help_src, "if ( 'pm' === \$who ) {\n\t\t\tself::pm();\n\t\t} else {\n\t\t\tself::status( \$s );\n\t\t\tself::admin();" ) );
+$check( '表示・AI への案内に「PM」を使わない（制作担当者。誰が直すかは requester。0.9.18）', array() === $pm_left && str_contains( (string) file_get_contents( __DIR__ . '/../../ship-content-mcp/src/Core/DomainError.php' ), "array( 'requester', " ) );
+$check( '使い方タブ：管理者向けと制作担当者向けの2つのタブに分かれている', str_contains( $sp_src, "'help'        => '使い方（管理者向け）'" ) && str_contains( $sp_src, "'help_pm'     => '使い方（制作担当者向け）'" ) && str_contains( $sp_src, "HelpPage::render( 'pm' )" ) && str_contains( $sp_src, "HelpPage::render( 'admin' )" ) && str_contains( $help_src, "if ( 'pm' === \$who ) {\n\t\t\tself::pm();\n\t\t} else {\n\t\t\tself::status( \$s );\n\t\t\tself::admin();" ) );
 
 $fail = 0;
 foreach ( $results as [ $name, $ok ] ) {

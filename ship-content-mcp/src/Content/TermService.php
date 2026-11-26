@@ -7,7 +7,7 @@
  * - 親子のある分類では、親（その分類の語）の下にも、一番上（見出し）にも足せる。親子のない分類は一番上に足す（0.9.14 で、親と数の制限を外した）。
  * - 同じ親の下に同じ名前（全角・半角・大文字小文字・空白の違いは同じとみなす）があれば、作らずにそれを返す。
  * - 似た名前（片方がもう片方を含む・別の親の下に同じ名前）があれば、作らずに候補を返す（TERM-002）。
- *   指示者に確かめてから new_anyway=true で足せる。
+ *   制作担当者に確かめてから new_anyway=true で足せる。
  * - 足した語には印（いつ・誰が）を付ける。試験中の投稿タイプなら試験の印も付け、cleanup-tests で片付ける（記事が付いていないものだけ）。
  * - WordPress の権限（manage_categories）は見ない。足してよいかは管理者の設定で決める（MCP のユーザーは権限の弱いユーザーのため）。
  *
@@ -185,7 +185,7 @@ final class TermService {
 					array(
 						'path'          => 'name',
 						'code'          => 'similar',
-						'message'       => '似た語があります。合う語があればそれを使ってください。どれも違うときは、指示者に確かめてから new_anyway を true にして送り直してください',
+						'message'       => '似た語があります。合う語があればそれを使ってください。どれも違うときは、制作担当者に確かめてから new_anyway を true にして送り直してください',
 						'similar_terms' => $found['similar'],
 					),
 				)
@@ -212,7 +212,7 @@ final class TermService {
 		if ( PostTypes::testing( $post_type ) ) {
 			update_term_meta( $id, self::META_TEST, '1' );
 		}
-		return self::result( $taxonomy, $id, true, array( '分類「' . (string) $tax->label . '」に、新しい語「' . $name . '」を足しました。指示者への報告に、足した語を書いてください（テーマによっては、記事が公開される前でもサイトの絞り込みに出ます）。' ) );
+		return self::result( $taxonomy, $id, true, array( '分類「' . (string) $tax->label . '」に、新しい語「' . $name . '」を足しました。制作担当者への報告に、足した語を書いてください（テーマによっては、記事が公開される前でもサイトの絞り込みに出ます）。' ) );
 	}
 
 	/**

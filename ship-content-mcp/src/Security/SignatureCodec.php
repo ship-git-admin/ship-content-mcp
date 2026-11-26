@@ -2,7 +2,7 @@
 /**
  * 署名の形（WordPress に依存しない。中継プログラム bridge/ と同じ決まり。docs/AUTH_SIGNATURE.md）。
  *
- * リクエスト（指示者の端末の秘密鍵で署名、Ed25519）：
+ * リクエスト（制作担当者の端末の秘密鍵で署名、Ed25519）：
  *   ship-content-mcp-req-v1 \n METHOD \n host \n request-uri \n timestamp \n nonce \n key-id \n mcp-session-id \n sha256hex(body)
  * 応答（サイトの秘密鍵で署名、Ed25519）：
  *   ship-content-mcp-res-v1 \n request-nonce \n status \n mcp-session-id \n sha256hex(body)

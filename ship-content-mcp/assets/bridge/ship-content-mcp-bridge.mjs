@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Ship Content MCP 中継プログラム（指示者の端末で動く。Node.js 18 以上。外部のパッケージは使わない）
+// Ship Content MCP 中継プログラム（制作担当者の端末で動く。Node.js 18 以上。外部のパッケージは使わない）
 //
 // AI エージェントからは、ふつうの MCP サーバー（標準入出力）に見える。
 // 受け取った MCP のメッセージに端末の鍵で署名して WordPress へ送り、返事の署名（サイトの鍵）を確かめてから AI に渡す。
@@ -43,7 +43,7 @@ import { realpathSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
-export const VERSION = '0.9.18';
+export const VERSION = '0.9.19';
 export const REQ_PREFIX = 'ship-content-mcp-req-v1';
 export const RES_PREFIX = 'ship-content-mcp-res-v1';
 export const CODE_PREFIX = 'shipmcp1.';
@@ -267,7 +267,7 @@ export function checkLocalImage(path, roots) {
 const LOCAL_TOOL_DEF = {
   name: LOCAL_UPLOAD_TOOL,
   title: '手元の写真を登録する',
-  description: '指示者のパソコンにある写真（JPEG・PNG・WebP）を、WordPress のメディアに登録する。path にファイルのパスを渡すだけでよい（読み込み・分割・送信はこの中継プログラムが行う。AI が写真の中身を読む必要はない）。位置情報などは WordPress 側で消す。返った attachment_id を ACF の画像の欄や featured_media に、url_large を本文（post_content）の img に使う。メディアの写真は、記事が下書きのままでも URL を知っていれば見られるので、公開してよい写真だけにする。',
+  description: '制作担当者のパソコンにある写真（JPEG・PNG・WebP）を、WordPress のメディアに登録する。path にファイルのパスを渡すだけでよい（読み込み・分割・送信はこの中継プログラムが行う。AI が写真の中身を読む必要はない）。位置情報などは WordPress 側で消す。返った attachment_id を ACF の画像の欄や featured_media に、url_large を本文（post_content）の img に使う。メディアの写真は、記事が下書きのままでも URL を知っていれば見られるので、公開してよい写真だけにする。',
   inputSchema: {
     type: 'object',
     properties: {
