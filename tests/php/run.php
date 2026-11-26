@@ -266,7 +266,9 @@ $missing   = array_filter( $help_imgs, static fn( $n ) => ! is_file( __DIR__ . '
 preg_match( "/IMAGES = array\\((.*?)\\);/s", $help_src, $im );
 preg_match_all( "/'([a-z0-9_]+)'/", $im[1] ?? '', $listed );
 $check( '使い方タブ：使う画像がすべて assets/help にあり、一覧（IMAGES）とそろっている', count( $help_imgs ) >= 15 && array() === $missing && array() === array_diff( $help_imgs, $listed[1] ) && array() === array_diff( $listed[1], $help_imgs ) );
-$check( '使い方タブ：サイトの値は差し込みで出す（サイト固有の名前は tools/secret_scan.py で検査）', str_contains( $help_src, '{site}' ) && str_contains( $help_src, '{https}' ) && str_contains( $help_src, '{invite_days}' ) );
+$check( '使い方タブ：取説の文にサイト名・ドメイン・入口の URL を差し込まない（どの案件でも同じ文。期限の日数だけ設定の値）', ! str_contains( $help_src, '{site}' ) && ! str_contains( $help_src, '{https}' ) && ! str_contains( $help_src, '{endpoint}' ) && ! str_contains( $help_src, 'get_bloginfo' ) && ! str_contains( $help_src, 'home_url' ) && ! preg_match( '/esc_html\\( \\$endpoint/', $help_src ) && str_contains( $help_src, '{invite_days}' ) && str_contains( $help_src, "ENTRY_EXAMPLE = 'https://（サイトのドメイン）/wp-json/ship-content/mcp'" ) );
+$sp_src = (string) file_get_contents( __DIR__ . '/../../ship-content-mcp/src/Admin/SettingsPage.php' );
+$check( '使い方タブ：管理者向けと PM 向けの2つのタブに分かれている', str_contains( $sp_src, "'help'        => '使い方（管理者向け）'" ) && str_contains( $sp_src, "'help_pm'     => '使い方（PM 向け）'" ) && str_contains( $sp_src, "HelpPage::render( 'pm' )" ) && str_contains( $sp_src, "HelpPage::render( 'admin' )" ) && str_contains( $help_src, "if ( 'pm' === \$who ) {\n\t\t\tself::pm();\n\t\t} else {\n\t\t\tself::status( \$s );\n\t\t\tself::admin();" ) );
 
 $fail = 0;
 foreach ( $results as [ $name, $ok ] ) {

@@ -1,10 +1,12 @@
 <?php
 /**
- * 管理画面の「使い方」タブ（管理者向け・PM 向けの取説）。
+ * 管理画面の「使い方（管理者向け）」「使い方（PM 向け）」タブ（0.9.16 で2つのタブに分けた）。
  *
- * - サイト名・入口の URL・期限の日数・設定の状態は、このサイトの値を出す（プラグインにサイト固有の情報を入れない）。
+ * - 取説の文は、どの案件でも同じにする。サイト名・ドメイン・入口の URL は差し込まない（案件名が取説に出ないように。0.9.16）。
+ *   差し込むのは、設定の値（招待コード・許可の期限の日数）と、管理画面へのリンクだけ。
+ * - 管理者向けの最初の「このサイトの状態」だけは、このサイトの設定を確かめる表（URL・サイト名は出さない）。
  * - 写真は assets/help/ の画像（架空のサイト「サンプル工務店」で撮ったもの。AI のアプリの画面は「画面のイメージ」）。
- * - PM 向けの部分だけを印刷・PDF に保存して、PM に渡せる。
+ * - それぞれのタブを、そのまま印刷・PDF に保存して渡せる。
  *
  * 文の中の **太字** と `コード` は、表示のときに強調・等幅にする（それ以外はすべてエスケープする）。
  *
@@ -51,34 +53,38 @@ final class HelpPage {
 	/** @var array<string,string> */
 	private static array $vars = array();
 
-	public static function render(): void {
-		$s        = Settings::get();
-		$endpoint = Server::endpoint();
-		$https    = str_starts_with( $endpoint, 'https://' ) ? $endpoint : 'https://（https で開けるドメイン）' . (string) wp_parse_url( $endpoint, PHP_URL_PATH );
-		$site     = wp_specialchars_decode( (string) get_bloginfo( 'name' ), ENT_QUOTES );
+	/** 入口の URL の書き方（どの案件でも同じ。ドメインは書かない）。 */
+	public const ENTRY_EXAMPLE = 'https://（サイトのドメイン）/wp-json/ship-content/mcp';
+
+	/**
+	 * @param string $who admin（管理者向け）か pm（PM 向け）
+	 */
+	public static function render( string $who = 'admin' ): void {
+		$s   = Settings::get();
+		$who = 'pm' === $who ? 'pm' : 'admin';
 
 		self::$vars = array(
-			'{site}'        => '' === trim( $site ) ? 'このサイト' : $site,
-			'{endpoint}'    => $endpoint,
-			'{https}'       => $https,
+			'{entry}'       => self::ENTRY_EXAMPLE,
 			'{invite_days}' => (string) $s['oauth_invite_days'],
 			'{grant_days}'  => (string) $s['oauth_grant_days'],
 			'{keys_url}'    => admin_url( 'options-general.php?page=' . SettingsPage::SLUG . '&tab=keys' ),
 		);
 		self::$fig  = 0;
 
+		$other = 'pm' === $who ? array( 'help', '管理者向けの取説は「使い方（管理者向け）」タブにあります。' ) : array( 'help_pm', 'PM に渡す取説は「使い方（PM 向け）」タブにあります（そのまま印刷・PDF にして渡せます）。' );
+
 		self::style();
 		echo '<div class="scm-help">';
-		echo '<div class="scm-help-top scm-noprint"><a class="button" href="#scm-help-admin">管理者向け</a> <a class="button" href="#scm-help-pm">PM 向け（印刷して渡せます）</a>';
-		echo ' <button type="button" class="button" onclick="document.body.classList.add(\'scm-print-pm\');window.print();document.body.classList.remove(\'scm-print-pm\');">PM 向けを印刷・PDF に保存</button>';
-		echo ' <button type="button" class="button" onclick="document.body.classList.add(\'scm-print-admin\');window.print();document.body.classList.remove(\'scm-print-admin\');">管理者向けを印刷・PDF に保存</button></div>';
-		echo '<p class="description scm-noprint">写真は、架空のサイト「サンプル工務店」で撮ったものです。AI のアプリの画面は「画面のイメージ」で、実際の画面とは細部が違うことがあります。サイト名・入口の URL・期限の日数は、このサイトの値です。</p>';
-		self::status( $s, $endpoint );
-		echo '<div class="scm-help-admin" id="scm-help-admin">';
-		self::admin();
-		echo '</div><div class="scm-help-pm" id="scm-help-pm">';
-		self::pm();
-		echo '</div></div>';
+		echo '<div class="scm-help-top scm-noprint"><button type="button" class="button button-primary" onclick="window.print();">' . ( 'pm' === $who ? 'PM 向けの取説を印刷・PDF に保存' : '管理者向けの取説を印刷・PDF に保存' ) . '</button>';
+		echo ' <a class="button" href="' . esc_url( admin_url( 'options-general.php?page=' . SettingsPage::SLUG . '&tab=' . $other[0] ) ) . '">' . esc_html( $other[1] ) . '</a></div>';
+		echo '<p class="description scm-noprint">どの案件でも同じ内容です（期限の日数だけ、このサイトの設定の値）。写真は、架空のサイト「サンプル工務店」で撮ったものです。AI のアプリの画面は「画面のイメージ」で、実際の画面とは細部が違うことがあります。</p>';
+		if ( 'pm' === $who ) {
+			self::pm();
+		} else {
+			self::status( $s );
+			self::admin();
+		}
+		echo '</div>';
 	}
 
 	// ---- このサイトの状態 ---------------------------------------------------------
@@ -86,7 +92,8 @@ final class HelpPage {
 	/**
 	 * @param array<string,mixed> $s
 	 */
-	private static function status( array $s, string $endpoint ): void {
+	private static function status( array $s ): void {
+		$endpoint = Server::endpoint();
 		$writable = array();
 		foreach ( PostTypes::allowed() as $pt ) {
 			if ( in_array( (string) ( $s['post_types'][ $pt ]['status'] ?? '' ), Settings::WRITABLE_STATUSES, true ) ) {
@@ -111,10 +118,10 @@ final class HelpPage {
 			array( 'ブラウザで許可してつなぐ', (bool) $s['auth_oauth'], $s['auth_oauth'] ? '有効（招待コード ' . $s['oauth_invite_days'] . ' 日・許可 ' . $s['oauth_grant_days'] . ' 日）' : '無効（「基本設定」で有効にする）' ),
 			array( '書き込める投稿タイプ', array() !== $writable, array() !== $writable ? implode( '・', $writable ) : 'まだない（「基本設定」で「試験中」以上にする）' ),
 			array( '制作方針', $policy, $policy ? '書いてある（版 ' . Policies::version() . '）' : 'まだ書いていない（「制作方針」タブ）' ),
-			array( '入口の URL', true, $endpoint . ( str_starts_with( $endpoint, 'http://' ) ? '（https:// で開けるなら https:// を PM に教える）' : '' ) ),
+			array( '入口', true, str_starts_with( $endpoint, 'https://' ) ? 'https://（このまま PM に教えられます）' : 'http://（https:// で開けるなら、招待コードを発行するときに入口の URL を https:// に変える）' ),
 			array( '招待コード・接続', true, '未使用の招待コード ' . $invites . ' 件・有効な接続 ' . $grants . ' 件' ),
 		);
-		echo '<div class="scm-help-status"><h2>このサイトの状態</h2><table class="widefat striped"><tbody>';
+		echo '<div class="scm-help-status scm-noprint"><h2>このサイトの状態</h2><table class="widefat striped"><tbody>';
 		foreach ( $rows as [ $label, $ok, $text ] ) {
 			echo '<tr><th>' . esc_html( $label ) . '</th><td><span class="scm-mark ' . ( $ok ? 'ok' : 'ng' ) . '">' . ( $ok ? '✓' : '!' ) . '</span> ' . esc_html( $text ) . '</td></tr>';
 		}
@@ -155,7 +162,7 @@ final class HelpPage {
 				array( '制作方針', '書いてある（AI はつないで最初に受け取り、途中で変わったら保存の前に読み直します）' ),
 			)
 		);
-		self::ul( array( 'REST を止めるコード（セキュリティの Snippet など）があるサイトでは、`ship-content/` を通す例外が要ります。', 'PM に教える入口は https:// をおすすめします（`{https}`）。このサイトの設定上の入口は `{endpoint}` です。AI によっては、http:// ではブラウザで許可する接続を使えません。' ) );
+		self::ul( array( 'REST を止めるコード（セキュリティの Snippet など）があるサイトでは、`ship-content/` を通す例外が要ります。', 'PM に教える入口は https:// をおすすめします（`{entry}`）。AI によっては、http:// ではブラウザで許可する接続を使えません。' ) );
 		self::h3( 'Basic 認証があるサイト（公開前のサイト）' );
 		self::p( 'AI は、Basic 認証を付けたまま接続の手続きをできません。そこで、**AI が自動で呼ぶ道だけ**を Basic 認証の例外にします。サイトのページと、PM が許可する画面は Basic 認証のままです。例外にした道も、トークンがなければ何もできません。' );
 		self::p( 'サーバーの `.htaccess` の、Basic 認証の部分（`AuthUserFile` から `require valid-user` まで）を、次の形にします。**変更する前に `.htaccess` の控えを取ってください。**' );
@@ -174,14 +181,14 @@ final class HelpPage {
 			array(
 				array( 'ユーザー', 'そのままでよい（最初は「MCP 用のユーザーを新しく作る」、2回目からは作った MCP 用のユーザーが選ばれています）。この接続で作った下書きは、このユーザーが作ったものになります' ),
 				array( 'PM の名前', 'あとで見分けるための名前（例：PM 山田（MacBook））' ),
-				array( '入口の URL', 'https:// の入口があれば https:// に変える（`{https}`）。「/wp-json/…」は変えない。AI に登録する名前（ship-…）は、この URL のドメインから決まります' ),
+				array( '入口の URL', 'https:// の入口があれば https:// に変える（`{entry}`）。「/wp-json/…」は変えない。AI に登録する名前（ship-…）は、この URL のドメインから決まります' ),
 			)
 		);
 		self::ul( array( '**PM 1人のパソコン1台ごとに1つ**発行します。' ) );
 		self::link_button( '「接続」タブを開く', '{keys_url}' );
 
 		self::h( '4', 'PM に送る' );
-		self::p( '発行すると、緑の枠に2つ出ます。それぞれ「コピー」を押して、PM に DM で送ります。この画面の「PM 向け」を印刷・PDF にして一緒に渡すと、PM が迷いません。' );
+		self::p( '発行すると、緑の枠に2つ出ます。それぞれ「コピー」を押して、PM に DM で送ります。「使い方（PM 向け）」タブを印刷・PDF にして一緒に渡すと、PM が迷いません。' );
 		self::fig( 'admin_invite_result', '発行した直後の画面（招待コードは使えない例）' );
 		self::table(
 			array( '送るもの', 'PM がすること' ),
@@ -250,7 +257,7 @@ final class HelpPage {
 		);
 
 		self::h( '10', '参考：WP-CLI・記録・トークン' );
-		self::pre( "wp ship-content-mcp keys invite --for-user=new --label='PM 山田（MacBook）' --entry-url={https}\nwp ship-content-mcp keys list\nwp ship-content-mcp keys revoke --key-id=<鍵 ID>\nwp ship-content-mcp prelaunch --yes\nwp ship-content-mcp status" );
+		self::pre( "wp ship-content-mcp keys invite --for-user=new --label='PM 山田（MacBook）' --entry-url={entry}\nwp ship-content-mcp keys list\nwp ship-content-mcp keys revoke --key-id=<鍵 ID>\nwp ship-content-mcp prelaunch --yes\nwp ship-content-mcp status" );
 		self::ul(
 			array(
 				'「記録」タブに、AI の登録・許可・トークンの発行・認証の失敗・ツールの実行・管理の操作が残ります。招待コードやトークンの中身は残りません。',
@@ -263,10 +270,10 @@ final class HelpPage {
 
 	private static function pm(): void {
 		self::$fig = 0;
-		self::title( 'PM 向け：AI につないで、記事の下書きを作る', '{site}の WordPress に、自分の AI から下書きを作るための手順です。文を AI に貼って、ブラウザで「許可する」を押すだけです。' );
+		self::title( 'PM 向け：AI につないで、記事の下書きを作る', 'サイト（WordPress）に、自分の AI から記事の下書きを作るための手順です。文を AI に貼って、ブラウザで「許可する」を押すだけです。' );
 
 		self::h( '1', 'これでできること' );
-		self::p( 'AI に普通の言葉で頼むと、{site} に記事の下書きができます。公開は、人が WordPress の管理画面で確かめてから行います。AI にできるのは、下書きの作成と修正だけです（公開・削除はできません）。' );
+		self::p( 'AI に普通の言葉で頼むと、サイトに記事の下書きができます。公開は、人が WordPress の管理画面で確かめてから行います。AI にできるのは、下書きの作成と修正だけです（公開・削除はできません）。' );
 		self::fig( 'pm_flow_oauth', '全体の流れ' );
 
 		self::h( '2', '用意するもの・使える AI' );
@@ -315,12 +322,12 @@ final class HelpPage {
 		self::box( 'この画面で許可してよいのは', array( '**自分で AI に「つないで」と頼んで、開いた画面のときだけ**です。人から送られてきたリンクで開いた画面では、許可しないでください（その人の AI がつながってしまいます）。' ), 'warn' );
 
 		self::h( '5', 'つながったか確かめる' );
-		self::p( 'AI に「{site}で使える投稿タイプを教えて」と聞きます。投稿タイプが返ってくれば、使えます。ツールが見つからないと言われたら、新しい会話にしてから聞き直します。2回目からは、何もしなくてもつながります。許可は {grant_days} 日で切れます。切れたら、管理者に新しい招待コードをもらって 4. をやり直します。' );
+		self::p( 'AI に「使える投稿タイプを教えて」と聞きます。投稿タイプが返ってくれば、使えます。ツールが見つからないと言われたら、新しい会話にしてから聞き直します。2回目からは、何もしなくてもつながります。許可は {grant_days} 日で切れます。切れたら、管理者に新しい招待コードをもらって 4. をやり直します。' );
 		self::fig( 'pm_ai_check', 'つながったか確かめる', true );
 
 		self::h( '6', '使い方' );
 		self::p( 'AI の新しい会話で、伝えたいことを普通に書きます。事実（費用・工期・製品名・お客様の名前）は、渡したものだけが使われます。足りないと AI が聞いてきます。' );
-		self::box( '頼み方の例', array( '{site}に、施工事例の下書きを作ってください。', '・地域：○○市（番地は書かない）／建物：木造2階建て／施工箇所：外壁・屋根', '・お客様のご要望：（聞いた内容）／ご提案：（提案した内容）', '・費用・工期：（書いてよければ）', '・写真：ピクチャの「現場A」フォルダ。before_ で始まるものが施工前、after_ が施工後' ), 'plain' );
+		self::box( '頼み方の例', array( '施工事例の下書きを作ってください。', '・地域：○○市（番地は書かない）／建物：木造2階建て／施工箇所：外壁・屋根', '・お客様のご要望：（聞いた内容）／ご提案：（提案した内容）', '・費用・工期：（書いてよければ）', '・写真：ピクチャの「現場A」フォルダ。before_ で始まるものが施工前、after_ が施工後' ), 'plain' );
 		self::fig( 'pm_request', '頼み方と返事の例', true );
 		self::ul( array( '写真は、手元のファイルなら、AI がサイトから「アップロード用の URL」をもらい、コマンド（curl）で送ります。「このコマンドを実行してよいか」と聞かれたら「許可」します。写真が誰でも開ける URL にあるなら、その URL を伝えるだけで、サイトが取り込みます（「取り込んでよいか」と聞かれたら「許可」します）。', '作り終わったら、WordPress の管理画面の「下書き」で確かめ、プレビューを見て直してから、人が公開します。', '直したいときは「下書き ○○ のご提案を、こう直して」と頼みます。' ) );
 		self::h3( '公開済みの記事を参考にする' );
@@ -477,10 +484,7 @@ final class HelpPage {
 @media print{
 #adminmenumain,#adminmenuback,#adminmenuwrap,#wpadminbar,#wpfooter,.nav-tab-wrapper,.wrap>h1,.notice,.update-nag,.scm-noprint{display:none!important}
 #wpcontent,#wpbody-content{margin:0!important;padding:0!important}html.wp-toolbar{padding:0!important}
-body.scm-print-pm .scm-help-admin,body.scm-print-pm .scm-help-status{display:none!important}
-body.scm-print-admin .scm-help-pm{display:none!important}
 .scm-fig,.scm-box,.scm-table tr{break-inside:avoid}.scm-h,.scm-h4{break-after:avoid}
-.scm-help-pm{break-before:page}body.scm-print-pm .scm-help-pm{break-before:auto}
 }
 </style>';
 	}
