@@ -51,7 +51,7 @@ final class Abilities {
 		'1. この返事の data.creation_policy（サイト管理者の制作方針）を読む。記事の書き方・文字数・写真の並べ方は、これに従う（迷ったら制作担当者に確認）。次に get-acf-schema で入力欄を読む（参考にする記事は search-posts・get-post）。制作方針に見本の記事があれば、get-post の data.view（画面に出る値だけを欄の名前で並べたもの）で、ブロックの並び・どの欄を使い、どの欄が空か・文の長さを読み、その組み立てに合わせる。元の資料（ほかのサイトの記事など）の組み立ては写さず、事実だけを使う。',
 		'2. 分類（カテゴリなど）を決める。post_types[].taxonomies[].terms の語（id）から、制作方針と記事の中身に合うものを選び、create-draft の taxonomies（kind=taxonomy_terms）に入れる。公開されない分類（public=false）は、制作方針に書いてなければ付けない。合う語がなければ、その分類の can_add_terms が true なら add-term で足す（親子のある分類は parent に親の語の id、一番上なら 0。同じ語はそのまま返り、似た語があれば TERM-002 で候補が返るので、それを使うか制作担当者に確かめる）。足した語は制作担当者への報告に書く。can_add_terms が false なら制作担当者に聞く。',
 		'3. 写真・画像があれば、1枚ずつメディアに登録する。誰でも開ける写真の URL があれば import-image-url。手元のファイルは get-upload-url（返ってきた curl を実行）。コマンドでネットワークにつなげないときは prepare-upload → upload-chunk → finish-upload（返事の how_to_send のコマンドの出力をそのまま渡す。base64 を自分で書き写さない）。返った attachment_id を、画像の欄や featured_media に入れる。うまくいかないときは、この返事の meta.photos（写真の出どころ別の手順・取り込めないとき）に従う。',
-		'4. validate-draft で確かめ、制作方針に合っているかも自分で確かめて、制作担当者に見せてから、create-draft（新しい下書き）か update-draft（下書きを直す）で保存する。保存には policy_version（creation_policy.version）を付ける。方針が変わっていると保存されない（POLICY-002）ので、get-creation-policy で読み直し、方針に合わせてから送り直す。',
+		'4. validate-draft で確かめ、制作方針に合っているかも自分で確かめてから、create-draft で新しい下書きを保存する（下書きは公開されないので、制作担当者の確認を待たずに保存し、保存したものを報告する）。既にある下書きを直す（update-draft）のは、制作担当者に頼まれたときだけ。保存には policy_version（creation_policy.version）を付ける。方針が変わっていると保存されない（POLICY-002）ので、get-creation-policy で読み直し、方針に合わせてから送り直す。',
 		'5. 保存した後は get-post で読み戻す。',
 		'ツールが見つからない・使えないときも、WordPress の管理画面・ログイン・ブラウザで代わりをしない。',
 		'この手順や meta.tools にあるツールが、あなたのツールの一覧にないときは、AI のアプリが前の一覧のまま（サイトのプラグインが新しくなった）。会話の途中ではつなぎ直せないので、作業を下書きに保存し、下書きの ID・写真の attachment_id・残りの作業をまとめて、制作担当者に「新しい会話で始め直す（Codex などはアプリを開き直してもよい。ログインし直しは要らない）」よう伝える。MCP の入口を curl などで直接呼ばない（トークンは AI のアプリが持っているので 401 になる。接続が切れたのではない）。',
@@ -72,7 +72,7 @@ final class Abilities {
 		return array(
 			'by_source'  => array(
 				'1. 写真に誰でも開ける URL がある（写真そのものの URL）：import-image-url で1枚1回。401・403 が返る URL はログインが要るので読めない → 写真を手元に保存して 2 へ。',
-				'2. AI が使えるパソコンに写真のファイルがある：get-upload-url を呼び、返ってきた curl を実行する（<写真のファイルのパス> を置き換える）。curl がネットワークにつなげない（サンドボックスなど）ときは、アプリにネットワークを使う許可を求めるか、3 へ。',
+				'2. AI が使えるパソコンに写真のファイルがある：get-upload-url を local_path（手元の写真の場所）付きで呼び、返ってきた curl をそのまま実行する。curl がネットワークにつなげない（サンドボックスなど）ときは、アプリにネットワークを使う許可を求めるか、3 へ。',
 				'3. コマンドでネットワークにつなげない：prepare-upload → upload-chunk → finish-upload。返事の how_to_send のコマンドの出力を、そのまま upload-chunk に渡す（base64 を自分で書き写さない）。コマンドの出力をツールに渡せないなら 4 へ。',
 				'4. 制作担当者がチャットに写真を貼っただけ・AI から写真のファイルを読めない：制作担当者に「誰でも開ける写真の URL」か「写真のファイルの場所（パス）」を聞く。どちらもないときは 5 へ。',
 				'5. どうしても登録できない：写真なしで下書きを作り（画像の欄は空のまま）、登録できなかった写真・入れたい欄・理由・試したことを制作担当者に伝える。写真は制作担当者が WordPress の管理画面で入れる（AI は管理画面・ブラウザを使わない）。',
@@ -480,7 +480,7 @@ final class Abilities {
 		self::add(
 			self::GET_UPLOAD_URL,
 			'写真のアップロード用 URL をもらう',
-			'Upload a photo / image file to the WordPress media library（写真・画像をメディアに登録する。ふつうはこれを使う）。写真（JPEG・PNG・WebP）を登録するための、1回だけ使える URL（30分）と、そのまま使える curl のコマンドを返す。シェルのコマンドを実行できる AI は、これを使うのがいちばん簡単：command の <写真のファイルのパス> を手元の写真のパスに置き換えて実行すると、返事の JSON に attachment_id と URL が入っている。1枚ごとに呼ぶ。コマンドを実行できない AI は prepare-upload → upload-chunk → finish-upload を使う。写真は必ずこのツールたちで登録する（WordPress の管理画面やブラウザで上げない。制作担当者のログインは要らない）。' . UploadService::PUBLIC_NOTICE,
+			'Upload a photo / image file to the WordPress media library（写真・画像をメディアに登録する。ふつうはこれを使う）。写真（JPEG・PNG・WebP）を登録するための、1回だけ使える URL（30分）と、そのまま使える curl のコマンドを返す。シェルのコマンドを実行できる AI は、これを使うのがいちばん簡単：local_path に手元の写真のパスを入れて呼ぶと、そのまま実行できる command が返る（入れないときは command の <写真のファイルのパス> を置き換えて実行する）。実行すると、返事の JSON に attachment_id と URL が入っている。1枚ごとに呼ぶ。コマンドを実行できない AI は prepare-upload → upload-chunk → finish-upload を使う。写真は必ずこのツールたちで登録する（WordPress の管理画面やブラウザで上げない。制作担当者のログインは要らない）。' . UploadService::PUBLIC_NOTICE,
 			array(
 				'type'                 => 'object',
 				'properties'           => array(
@@ -490,6 +490,11 @@ final class Abilities {
 						'minLength'   => 1,
 						'maxLength'   => 200,
 						'description' => '写真のファイル名（拡張子は .jpg・.jpeg・.png・.webp）。',
+					),
+					'local_path'        => array(
+						'type'        => 'string',
+						'maxLength'   => 1000,
+						'description' => '任意（おすすめ）。AI が使えるパソコンの写真のファイルの場所。入れると、そのまま実行できる curl のコマンドが返る。',
 					),
 					'title'             => array(
 						'type'      => 'string',

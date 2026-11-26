@@ -70,7 +70,7 @@ final class UploadEndpoint {
 	/**
 	 * アップロード用 URL を発行する（ツール get-upload-url から）。
 	 *
-	 * @param array<string,mixed> $in post_type, filename, title?, alt?, attach_to_post_id?
+	 * @param array<string,mixed> $in post_type, filename, title?, alt?, attach_to_post_id?, local_path?
 	 * @return array{data:array<string,mixed>,warnings:list<string>}
 	 * @throws DomainError
 	 */
@@ -102,7 +102,13 @@ final class UploadEndpoint {
 		if ( 1 === preg_match( '#^Basic [A-Za-z0-9+/=]{4,400}$#', $auth ) ) {
 			$header = ' -H ' . escapeshellarg( 'Authorization: ' . $auth ); // サーバーの Basic 認証（公開前のサイト）を通るため。
 		}
-		$command = 'curl -sS -X POST -H ' . escapeshellarg( 'Content-Type: application/octet-stream' ) . $header . ' --data-binary @"<写真のファイルのパス>" ' . escapeshellarg( $url );
+		// 手元の写真のパス（local_path）が付いていれば、そのまま実行できるコマンドにする（0.9.22。置き換え忘れで送れなかったため）。
+		$local = isset( $in['local_path'] ) && is_string( $in['local_path'] ) ? trim( $in['local_path'] ) : '';
+		if ( '' !== $local && ( strlen( $local ) > 1000 || false !== strpos( $local, "\0" ) || 1 !== preg_match( '/\.(jpe?g|png|webp)$/i', $local ) ) ) {
+			$local = '';
+		}
+		$file_arg = '' !== $local ? '@' . escapeshellarg( $local ) : '@"<写真のファイルのパス>"';
+		$command  = 'curl -sS -X POST -H ' . escapeshellarg( 'Content-Type: application/octet-stream' ) . $header . ' --data-binary ' . $file_arg . ' ' . escapeshellarg( $url );
 		return array(
 			'data'     => array(
 				'upload_url' => $url,
@@ -110,7 +116,7 @@ final class UploadEndpoint {
 				'command'    => $command,
 				'expires_at' => gmdate( 'c', time() + self::TTL ),
 				'max_mb'     => (int) Settings::get()['media_max_mb'],
-				'how_to'     => 'command の <写真のファイルのパス> を、手元の写真のパスに置き換えて、シェルで1回だけ実行してください。返事の JSON の data.attachment_id を、ACF の画像の欄や featured_media に使います（url_large は本文の img に）。URL は30分・1回だけ使えます。',
+				'how_to'     => ( '' !== $local ? 'command を、そのままシェルで1回だけ実行してください。' : 'command の <写真のファイルのパス> を、手元の写真のパスに置き換えて、シェルで1回だけ実行してください（次からは local_path に手元のパスを入れて呼ぶと、そのまま実行できる command が返ります）。' ) . '返事の JSON の data.attachment_id を、ACF の画像の欄や featured_media に使います（url_large は本文の img に）。URL は30分・1回だけ使えます。',
 			),
 			'warnings' => array( UploadService::PUBLIC_NOTICE ),
 		);
