@@ -3,11 +3,11 @@ Contributors: shipinc
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.9.17
+Stable tag: 0.9.18
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-許可した投稿タイプの下書きを、社内 PM の AI エージェントから MCP で作成・修正するためのプラグインです。
+許可した投稿タイプの下書きを、社内の指示者の AI エージェントから MCP で作成・修正するためのプラグインです。
 
 == Description ==
 
@@ -17,6 +17,9 @@ WordPress 側では AI を呼びません。公開・予約・削除・ACF の�
 読み取り（投稿タイプ・制作方針・入力欄の構造・記事）、下書きの検証・作成・修正、分類の語の追加、写真の登録（アップロード用 URL・分割転送・URL からの取り込み）のツールがあります。
 
 == Changelog ==
+
+= 0.9.18 =
+* 画面・AI への案内・使い方・手順書の「PM」を「指示者」にした（記事を依頼する人）。使い方のタブは「使い方（指示者向け）」。ツールの誤りの「誰が直すか」の値 pm は requester にした。
 
 = 0.9.17 =
 * 招待コードを発行するときに、許可した接続の期限を選べるようにした（1週間・1か月・3か月・6か月・1年・無期限。初期は基本設定の値）。WP-CLI は --grant-days（無期限は unlimited）。

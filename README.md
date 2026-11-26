@@ -1,43 +1,43 @@
 # Ship Content MCP
 
-社内の PM が、手元の AI エージェントから MCP で WordPress につなぎ、許可した投稿タイプの**下書き**を作る・直すための WordPress プラグインです。
+社内の指示者が、手元の AI エージェントから MCP で WordPress につなぎ、許可した投稿タイプの**下書き**を作る・直すための WordPress プラグインです。
 
 - WordPress 公式の [MCP Adapter](https://github.com/WordPress/mcp-adapter)（別プラグイン）の上で動く、自作の MCP サーバーです。
-- WordPress 側では AI を呼びません（AI の API キーを WordPress に置きません）。文章や写真の判断は、PM の AI エージェントが行います。
+- WordPress 側では AI を呼びません（AI の API キーを WordPress に置きません）。文章や写真の判断は、指示者の AI エージェントが行います。
 - 入力欄（ACF）の構造は、その場で読みます。事前のマッピングは要りません。
 - 制作方針は、管理画面に自然な文章で書きます（サイト共通・投稿タイプ別）。
 - 公開・予約・削除・ACF の定義の変更・テーマやプラグインの変更は、できません。
 
-> 版 0.9.17。PM の試運用の前の段階です。
+> 版 0.9.18。指示者の試運用の前の段階です。
 
 ## 必要なもの
 
 - WordPress 6.9 以上（Abilities API）、PHP 8.1 以上（sodium）
 - 公式 MCP Adapter（WordPress.org のプラグイン `mcp-adapter`）
 - ACF（入力欄の構造を読むとき）
-- PM の AI：HTTP の MCP と OAuth に対応したもの（Claude Code・Codex など）。文を貼り、ブラウザで許可するだけ（[docs/PM_GUIDE.md](docs/PM_GUIDE.md) の 0.）。署名方式を使うときだけ Node.js 18 以上（中継プログラム）
+- 指示者の AI：HTTP の MCP と OAuth に対応したもの（Claude Code・Codex など）。文を貼り、ブラウザで許可するだけ（[docs/REQUESTER_GUIDE.md](docs/REQUESTER_GUIDE.md) の 0.）。署名方式を使うときだけ Node.js 18 以上（中継プログラム）
 
 ## 入れ方（管理者）
 
 1. 公式 MCP Adapter と、このプラグインを入れて有効にします。
 2. 「設定 → Ship Content MCP → 基本設定」で、使う投稿タイプ（初期は `works`）を確かめて、「MCP を受け付ける」を有効にします。
-3. 「接続」タブで、PM ごとに招待コードを発行します（MCP 用のユーザーも、そこで作れます）。サーバーの Basic 認証があるサイトでは、AI が自動で呼ぶ道だけを Basic 認証の例外にします（[docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md) の 3.）。
+3. 「接続」タブで、指示者ごとに招待コードを発行します（MCP 用のユーザーも、そこで作れます）。サーバーの Basic 認証があるサイトでは、AI が自動で呼ぶ道だけを Basic 認証の例外にします（[docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md) の 3.）。
 4. 「制作方針」に、サイト共通と投稿タイプ別の方針を書きます。
 5. 「診断」で、問題がないか確かめます。
 
 REST を止めるコード（セキュリティの Snippet など）があるサイトでは、MCP の入口 `ship-content/` を通すようにしてください。
 
-## PM の AI でつなぐ（ブラウザで許可する：OAuth・おすすめ）
+## 指示者の AI でつなぐ（ブラウザで許可する：OAuth・おすすめ）
 
-管理者が「接続」タブで**招待コード**を発行すると、「AI に貼る文」（秘密なし）と招待コードが出ます。PM は文を自分の AI（Claude Code・Codex など）に貼り、AI がブラウザを開いたら、「接続の許可」の画面に招待コードを入れて「許可する」を押すだけです。秘密は AI の会話に入りません。
+管理者が「接続」タブで**招待コード**を発行すると、「AI に貼る文」（秘密なし）と招待コードが出ます。指示者は文を自分の AI（Claude Code・Codex など）に貼り、AI がブラウザを開いたら、「接続の許可」の画面に招待コードを入れて「許可する」を押すだけです。秘密は AI の会話に入りません。
 
 - 招待コードは1回だけ・初期 7日。許可した接続の期限は、招待コードを発行するときに選べる（1週間〜1年・無期限。初期 90日）。AI に渡すトークンも、許可した接続の期限まで使えます（トークンを延長しない AI のアプリでも、途中で切れません）。管理者が止めれば、その場で使えなくなります。
-- Claude Code は登録の後、PM が `/mcp` から認証する（または端末で `claude mcp login <名前>`）。Codex は `codex mcp add` でそのままログインが始まります。
+- Claude Code は登録の後、指示者が `/mcp` から認証する（または端末で `claude mcp login <名前>`）。Codex は `codex mcp add` でそのままログインが始まります。
 - サーバーの Basic 認証があるサイトでは、AI が自動で呼ぶ道だけを Basic 認証の例外にします（[docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md) の 3.）。
 
-## PM の AI でつなぐ（トークン）
+## 指示者の AI でつなぐ（トークン）
 
-管理者が「設定 → Ship Content MCP → 接続」でトークンを発行すると、「AI に貼る文」が出ます。PM はそれを自分の AI（Claude Code・Codex など）に貼るだけで、AI が自分の MCP の設定に登録します。自分で設定するときのコマンドも出ます。例（Claude Code）：
+管理者が「設定 → Ship Content MCP → 接続」でトークンを発行すると、「AI に貼る文」が出ます。指示者はそれを自分の AI（Claude Code・Codex など）に貼るだけで、AI が自分の MCP の設定に登録します。自分で設定するときのコマンドも出ます。例（Claude Code）：
 
 ```bash
 claude mcp add --transport http --scope user ship-example https://example.invalid/wp-json/ship-content/mcp --header 'X-Ship-MCP-Token: smcp_…'
@@ -116,9 +116,9 @@ ACF の値は、上の階層も入れ子も field key で指定します。flexi
 
 ## 手順書
 
-- 管理画面の「設定 → Ship Content MCP」の「使い方（管理者向け）」「使い方（PM 向け）」タブに、取説（写真つき）がある。どの案件でも同じ文で、サイト名・ドメインは入らない。それぞれ印刷・PDF にして渡せる。
-- PM 向け：[docs/PM_GUIDE.md](docs/PM_GUIDE.md)（鍵の作り方・AI エージェントへの登録・頼み方・写真・困ったとき）
-- 管理者向け：[docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md)（入れ方・投稿タイプの状態・構造の確認・PM のユーザーと鍵・制作方針の書き方・片付け）
+- 管理画面の「設定 → Ship Content MCP」の「使い方（管理者向け）」「使い方（指示者向け）」タブに、取説（写真つき）がある。どの案件でも同じ文で、サイト名・ドメインは入らない。それぞれ印刷・PDF にして渡せる。
+- 指示者向け：[docs/REQUESTER_GUIDE.md](docs/REQUESTER_GUIDE.md)（鍵の作り方・AI エージェントへの登録・頼み方・写真・困ったとき）
+- 管理者向け：[docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md)（入れ方・投稿タイプの状態・構造の確認・指示者のユーザーと鍵・制作方針の書き方・片付け）
 
 ## 安全の決まり
 
@@ -141,7 +141,7 @@ WordPress 上では `wp ship-content-mcp selftest`（読み取り中心）と `w
 ## 配布・更新
 
 - 配布は GitHub のリリースに添付した `ship-content-mcp-X.Y.Z.zip`（管理画面の「プラグイン > 新規追加 > アップロード」でも入れられる）。入れた後は、WordPress の「更新」画面に新しい版が出る（同梱の Plugin Update Checker）。
-- PM 用の中継プログラム `ship-content-mcp-bridge.mjs` も、同じリリースに添付する。
+- 指示者用の中継プログラム `ship-content-mcp-bridge.mjs` も、同じリリースに添付する。
 - リリース・巻き戻しの手順は [docs/RELEASE.md](docs/RELEASE.md)、脆弱性の報告は [SECURITY.md](SECURITY.md)。
 
 ## ライセンス

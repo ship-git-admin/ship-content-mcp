@@ -2,7 +2,7 @@
 /**
  * 管理画面「設定 → Ship Content MCP」（管理者だけ）。
  *
- * タブ：基本設定 / 制作方針 / 接続 / 診断 / 記録 / 使い方（管理者向け） / 使い方（PM 向け）
+ * タブ：基本設定 / 制作方針 / 接続 / 診断 / 記録 / 使い方（管理者向け） / 使い方（指示者向け）
  * - 保存はすべて admin-post.php（nonce と manage_options を確かめる）。
  * - 秘密（端末の秘密鍵・パスワード・サイトの秘密鍵）は、受け取らない・表示しない。
  * - ACF の項目ごとの設定画面は作らない（制作方針は自由記述）。
@@ -40,7 +40,7 @@ final class SettingsPage {
 		'diagnostics' => '診断',
 		'log'         => '記録',
 		'help'        => '使い方（管理者向け）',
-		'help_pm'     => '使い方（PM 向け）',
+		'help_pm'     => '使い方（指示者向け）',
 	);
 
 	public static function hooks(): void {
@@ -120,17 +120,17 @@ final class SettingsPage {
 			echo '</select></td><td>' . self::verified_cell( $name, $row ) . '</td></tr>';
 		}
 		echo '</tbody></table><p class="description">最初は works だけを使います。「未検証」は読み取りだけ。「試験中」で下書きの保存を試し（作った下書きに試験の印が付き、WP-CLI の cleanup-tests で片付けられます）、実機の試験に合格したら「試験合格」にしてください。「試験合格」「稼働」にしたときの入力欄（ACF）の構造を記録し、その後に構造が変わったら、AI と「診断」に知らせます（「入力欄が変わったら書き込みを止める」を入にしたときは、確かめ直すまで止めます）。</p></td></tr>';
-		self::checkbox_row( 'reject_privileged', '権限の強いユーザーを拒否する', $s['reject_privileged'], '投稿の編集・公開・アップロード・設定変更などの権限を持つユーザーは、MCP で使えません（推奨）。PM には「' . Consts::ROLE_LABEL . '」のユーザーを使ってください。' );
-		self::checkbox_row( 'auth_oauth', 'ブラウザで許可してつなぐ（OAuth）', $s['auth_oauth'], '「接続」タブで発行した招待コードを、PM がブラウザの「接続の許可」の画面に入れて許可します。秘密が AI の会話に入りません（おすすめ）。' );
+		self::checkbox_row( 'reject_privileged', '権限の強いユーザーを拒否する', $s['reject_privileged'], '投稿の編集・公開・アップロード・設定変更などの権限を持つユーザーは、MCP で使えません（推奨）。指示者には「' . Consts::ROLE_LABEL . '」のユーザーを使ってください。' );
+		self::checkbox_row( 'auth_oauth', 'ブラウザで許可してつなぐ（OAuth）', $s['auth_oauth'], '「接続」タブで発行した招待コードを、指示者がブラウザの「接続の許可」の画面に入れて許可します。秘密が AI の会話に入りません（おすすめ）。' );
 		echo '<tr><th scope="row">招待コード・接続の期限</th><td>招待コードは <input type="number" name="oauth_invite_days" min="1" max="90" value="' . esc_attr( (string) $s['oauth_invite_days'] ) . '" class="small-text"> 日以内に1回だけ使える。許可した接続の期限は、初期 <input type="number" name="oauth_grant_days" min="1" max="365" value="' . esc_attr( (string) $s['oauth_grant_days'] ) . '" class="small-text"> 日（招待コードを発行するときに選び直せる。切れたら、新しい招待コードで許可し直す）。</td></tr>';
-		self::checkbox_row( 'oauth_remote_clients', 'Web 版の AI からの接続も許す', $s['oauth_remote_clients'], 'Claude の Web 版・デスクトップのコネクタなど、AI の会社のサーバーからつなぐものです。オフの間は、PM のパソコンの中で動く AI（Claude Code・Codex など）だけがつなげます。オンにすると、人から送られた許可のリンクで招待コードを入れてしまったときに、その人の AI がつながるおそれが増えます。' );
+		self::checkbox_row( 'oauth_remote_clients', 'Web 版の AI からの接続も許す', $s['oauth_remote_clients'], 'Claude の Web 版・デスクトップのコネクタなど、AI の会社のサーバーからつなぐものです。オフの間は、指示者のパソコンの中で動く AI（Claude Code・Codex など）だけがつなげます。オンにすると、人から送られた許可のリンクで招待コードを入れてしまったときに、その人の AI がつながるおそれが増えます。' );
 		self::checkbox_row( 'auth_token', 'トークンで認証する', $s['auth_token'], '「接続」タブで発行したトークンを、Claude Code・Codex などの MCP の設定に入れるだけでつながります（いちばん簡単）。' );
 		self::checkbox_row( 'token_http', 'トークンを HTTP でも受け付ける', $s['token_http'], '公開前の確認用 URL（HTTP）で使うためです。HTTP ではトークンが暗号化されずに流れるので、公開するときはこのプラグインごと外してください（「接続」タブの「公開の前に片付ける」）。' );
 		self::checkbox_row( 'auth_signature', '端末の署名で認証する', $s['auth_signature'], 'パスワードを通信に乗せません。HTTP の動作確認URLや、Basic 認証のあるサイトでも使えます。' );
 		self::checkbox_row( 'auth_app_password', 'Application Password で認証する', $s['auth_app_password'], 'HTTPS のサイトだけで使えます（WordPress の決まり）。' );
 		echo '<tr><th scope="row"><label for="scm-max">写真の上限</label></th><td><input id="scm-max" type="number" name="media_max_mb" min="1" max="100" value="' . esc_attr( (string) $s['media_max_mb'] ) . '" class="small-text"> MB<p class="description">写真は JPEG・PNG・WebP だけ受け付けます（URL からの取得はしません）。</p></td></tr>';
 		self::checkbox_row( 'structure_strict', '入力欄が変わったら書き込みを止める', $s['structure_strict'], '「試験合格」「稼働」の投稿タイプで、ACF の入力欄の構造が、確かめた後に変わったら、確かめ直すまで AI の書き込みを止めます。切（初期）なら止めずに、AI と「診断」に知らせます（AI は保存のたびに今の構造で確かめるので、形の合わない値は入りません）。' );
-		self::checkbox_row( 'allow_add_terms', 'AI が分類の語を足せる', $s['allow_add_terms'], '記事に合う分類の語（エリアの地名など）がないとき、AI が語を足せます（見出しになる親の語も）。同じ語は作らず、似た語があれば AI が PM に確かめます。公開されない分類（システムタグなど）には足しません。テーマによっては、記事が公開される前でもサイトの絞り込みに出ます（親の語は特に）。' );
+		self::checkbox_row( 'allow_add_terms', 'AI が分類の語を足せる', $s['allow_add_terms'], '記事に合う分類の語（エリアの地名など）がないとき、AI が語を足せます（見出しになる親の語も）。同じ語は作らず、似た語があれば AI が指示者に確かめます。公開されない分類（システムタグなど）には足しません。テーマによっては、記事が公開される前でもサイトの絞り込みに出ます（親の語は特に）。' );
 		self::added_terms_row();
 		self::checkbox_row( 'strip_metadata', '写真の位置情報などを消す', $s['strip_metadata'], '撮影場所（GPS）・カメラの情報などのメタデータを、登録の前に消します（向きは写真に反映してから消します）。お客様の住所が分かってしまうのを防ぐため、有効のままにしてください。' );
 		echo '<tr><th scope="row">メディアの公開範囲</th><td><p class="description" style="color:#b32d2e">' . esc_html( \ShipContentMcp\Media\UploadService::PUBLIC_NOTICE ) . '</p></td></tr>';
@@ -143,7 +143,7 @@ final class SettingsPage {
 	private static function tab_policy(): void {
 		$p     = Policies::get();
 		$types = PostTypes::allowed();
-		echo '<p>AI は、つないで最初に呼ぶツール（list-post-types）でこの方針を受け取り、それに従って書きます。作業の途中で変えたときは、AI が保存の前に新しい版を読み直します。入力欄の field key と結び付けないので、ACF の構造が変わっても書き直さなくて構いません。「基本〜」は推奨、絶対に守らせたいことは PM の確認や、今後の機能（検証）で扱います。</p>';
+		echo '<p>AI は、つないで最初に呼ぶツール（list-post-types）でこの方針を受け取り、それに従って書きます。作業の途中で変えたときは、AI が保存の前に新しい版を読み直します。入力欄の field key と結び付けないので、ACF の構造が変わっても書き直さなくて構いません。「基本〜」は推奨、絶対に守らせたいことは指示者の確認や、今後の機能（検証）で扱います。</p>';
 		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
 		wp_nonce_field( 'ship_content_mcp_save_policies' );
 		echo '<input type="hidden" name="action" value="ship_content_mcp_save_policies">';
@@ -244,17 +244,17 @@ final class SettingsPage {
 				'SHIP_MCP_SERVER_KEY=' . SiteKey::public_b64(),
 				'SHIP_MCP_BASIC_AUTH=（サーバーの Basic 認証がある場合だけ。ID:パスワード）',
 			);
-			echo '<div class="notice notice-success inline"><p>登録しました。PM の中継プログラムに、次の値を設定してください（秘密鍵とパスワードは、ここには表示しません）。</p><pre style="white-space:pre-wrap">' . esc_html( implode( "\n", $lines ) ) . '</pre></div>';
+			echo '<div class="notice notice-success inline"><p>登録しました。指示者の中継プログラムに、次の値を設定してください（秘密鍵とパスワードは、ここには表示しません）。</p><pre style="white-space:pre-wrap">' . esc_html( implode( "\n", $lines ) ) . '</pre></div>';
 		}
 		self::issue_section( $users, $endpoint );
-		echo '<h3>端末の公開鍵を登録する（鍵を PM のパソコンで作る方式）</h3>';
-		echo '<p class="description">PM が中継プログラムの keygen で鍵を作り、公開鍵を送ってくる場合に使います。秘密が PM のパソコンから一度も出ない、いちばん堅い方式です。</p>';
+		echo '<h3>端末の公開鍵を登録する（鍵を指示者のパソコンで作る方式）</h3>';
+		echo '<p class="description">指示者が中継プログラムの keygen で鍵を作り、公開鍵を送ってくる場合に使います。秘密が指示者のパソコンから一度も出ない、いちばん堅い方式です。</p>';
 		if ( array() !== $users ) {
 			echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
 			wp_nonce_field( 'ship_content_mcp_add_key' );
 			echo '<input type="hidden" name="action" value="ship_content_mcp_add_key"><table class="form-table" role="presentation">';
 			echo '<tr><th><label for="scm-user">ユーザー</label></th><td>' . self::user_select( 'scm-user', 'user_id', $users, false ) . '</td></tr>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- user_select でエスケープ済み
-			echo '<tr><th><label for="scm-label">端末の名前</label></th><td><input id="scm-label" name="label" class="regular-text" maxlength="100" placeholder="例：PM 山田 MacBook"></td></tr>';
+			echo '<tr><th><label for="scm-label">端末の名前</label></th><td><input id="scm-label" name="label" class="regular-text" maxlength="100" placeholder="例：山田 MacBook"></td></tr>';
 			echo '<tr><th><label for="scm-pub">公開鍵</label></th><td><input id="scm-pub" name="public_key" class="large-text code" maxlength="64" placeholder="中継プログラムの keygen が表示した「公開鍵」"><p class="description">秘密鍵は貼らないでください（受け付けません）。端末ごとに別の鍵を登録します。</p></td></tr>';
 			echo '</table>';
 			submit_button( '登録する' );
@@ -321,7 +321,7 @@ final class SettingsPage {
 	private static function invite_section( array $users, string $endpoint ): void {
 		$s = Settings::get();
 		echo '<h2>招待コードを発行する（ブラウザで許可する接続・おすすめ）</h2>';
-		echo '<p>PM は「AI に貼る文」を自分の AI（Claude Code・Codex など）に貼るだけです。AI がブラウザを開くので、PM はその「接続の許可」の画面に招待コードを入れて「許可する」を押します。秘密は AI の会話に入りません。招待コードは ' . esc_html( (string) $s['oauth_invite_days'] ) . ' 日以内に1回だけ使えます。許可した接続の期限は、下の「接続の期限」で選びます（初期 ' . esc_html( OAuth::grant_label( OAuth::grant_days() ) ) . '。初期値は「基本設定」で変えられます）。PM 1人のパソコン1台ごとに1つ発行してください。取説は<a href="' . esc_url( admin_url( 'options-general.php?page=' . self::SLUG . '&tab=help' ) ) . '">「使い方（管理者向け）」</a>と<a href="' . esc_url( admin_url( 'options-general.php?page=' . self::SLUG . '&tab=help_pm' ) ) . '">「使い方（PM 向け）」</a>のタブにあります（PM 向けは印刷・PDF にして PM に渡せます）。</p>';
+		echo '<p>指示者は「AI に貼る文」を自分の AI（Claude Code・Codex など）に貼るだけです。AI がブラウザを開くので、指示者はその「接続の許可」の画面に招待コードを入れて「許可する」を押します。秘密は AI の会話に入りません。招待コードは ' . esc_html( (string) $s['oauth_invite_days'] ) . ' 日以内に1回だけ使えます。許可した接続の期限は、下の「接続の期限」で選びます（初期 ' . esc_html( OAuth::grant_label( OAuth::grant_days() ) ) . '。初期値は「基本設定」で変えられます）。指示者1人のパソコン1台ごとに1つ発行してください。取説は<a href="' . esc_url( admin_url( 'options-general.php?page=' . self::SLUG . '&tab=help' ) ) . '">「使い方（管理者向け）」</a>と<a href="' . esc_url( admin_url( 'options-general.php?page=' . self::SLUG . '&tab=help_pm' ) ) . '">「使い方（指示者向け）」</a>のタブにあります（指示者向けは印刷・PDF にして指示者に渡せます）。</p>';
 		if ( ! $s['auth_oauth'] ) {
 			echo '<div class="notice notice-warning inline"><p>「基本設定」で「ブラウザで許可してつなぐ（OAuth）」が止まっています。</p></div>';
 		}
@@ -366,11 +366,11 @@ final class SettingsPage {
 		}
 		if ( is_array( $result ) ) {
 			echo '<div class="notice notice-success inline" style="padding:12px 16px">';
-			echo '<p><strong>発行しました（鍵 ID ' . esc_html( $result['key_id'] ) . '）。この画面を閉じると、招待コードは二度と表示されません。</strong>下の2つを PM に送ってください。</p>';
-			self::copy_box( 'scm-i-prompt', '① AI に貼る文：PM は自分の AI にそのまま貼ります（秘密は入っていません）', OAuth::pm_prompt( $result['name'], $result['url'] ), 13 );
-			self::copy_box( 'scm-i-code', '② 招待コード：PM はブラウザの「接続の許可」の画面に入れます（AI には貼りません）。' . self::local_time( $result['expires_at'] ) . ' まで・1回だけ', $result['code'], 1 );
-			echo '<p><strong>接続の期限：</strong>' . ( OAuth::GRANT_UNLIMITED === (int) $result['grant_days'] ? '無期限（一覧で「止める」を押すか、公開の前に片付けるまで使えます）。' : 'PM が許可した日から ' . esc_html( OAuth::grant_label( (int) $result['grant_days'] ) ) . '。切れたら、新しい招待コードを発行して送ります。' ) . '</p>';
-			echo '<p class="description" style="margin-top:12px">サーバーの Basic 認証があるサイトでは、許可の画面を開いたときにブラウザが Basic 認証の ID とパスワードを聞きます（PM がサイトの確認に使っているもの）。AI が自動で呼ぶ道は、サーバーの設定で Basic 認証の例外にしておきます（管理者向けの手順書を参照）。</p>';
+			echo '<p><strong>発行しました（鍵 ID ' . esc_html( $result['key_id'] ) . '）。この画面を閉じると、招待コードは二度と表示されません。</strong>下の2つを指示者に送ってください。</p>';
+			self::copy_box( 'scm-i-prompt', '① AI に貼る文：指示者は自分の AI にそのまま貼ります（秘密は入っていません）', OAuth::pm_prompt( $result['name'], $result['url'] ), 13 );
+			self::copy_box( 'scm-i-code', '② 招待コード：指示者はブラウザの「接続の許可」の画面に入れます（AI には貼りません）。' . self::local_time( $result['expires_at'] ) . ' まで・1回だけ', $result['code'], 1 );
+			echo '<p><strong>接続の期限：</strong>' . ( OAuth::GRANT_UNLIMITED === (int) $result['grant_days'] ? '無期限（一覧で「止める」を押すか、公開の前に片付けるまで使えます）。' : '指示者が許可した日から ' . esc_html( OAuth::grant_label( (int) $result['grant_days'] ) ) . '。切れたら、新しい招待コードを発行して送ります。' ) . '</p>';
+			echo '<p class="description" style="margin-top:12px">サーバーの Basic 認証があるサイトでは、許可の画面を開いたときにブラウザが Basic 認証の ID とパスワードを聞きます（指示者がサイトの確認に使っているもの）。AI が自動で呼ぶ道は、サーバーの設定で Basic 認証の例外にしておきます（管理者向けの手順書を参照）。</p>';
 			echo '</div>';
 		}
 		echo '<form method="post" action="' . esc_url( admin_url( 'options-general.php?page=' . self::SLUG . '&tab=keys' ) ) . '" autocomplete="off">';
@@ -378,12 +378,12 @@ final class SettingsPage {
 		echo '<input type="hidden" name="scm_invite" value="1"><input type="hidden" name="issue_token" value="' . esc_attr( strtolower( wp_generate_password( 24, false ) ) ) . '">';
 		echo '<table class="form-table" role="presentation">';
 		echo '<tr><th><label for="scm-invite-user">ユーザー</label></th><td>' . self::user_select( 'scm-invite-user', 'user_id', $users, true ) . '<p class="description">この接続で作った下書きは、このユーザーが作ったものになります。ふつうは「MCP 用のユーザー」1人で足ります。</p></td></tr>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- user_select でエスケープ済み
-		echo '<tr><th><label for="scm-invite-label">PM の名前</label></th><td><input id="scm-invite-label" name="label" class="regular-text" maxlength="100" placeholder="例：PM 山田（MacBook）"><p class="description">あとで「止める」ときに見分けるための名前です。</p></td></tr>';
+		echo '<tr><th><label for="scm-invite-label">指示者の名前</label></th><td><input id="scm-invite-label" name="label" class="regular-text" maxlength="100" placeholder="例：山田（MacBook）"><p class="description">あとで「止める」ときに見分けるための名前です。</p></td></tr>';
 		echo '<tr><th><label for="scm-invite-grant">接続の期限</label></th><td><select id="scm-invite-grant" name="grant_days">';
 		foreach ( OAuth::grant_choices() as $d => $text ) {
 			echo '<option value="' . esc_attr( (string) $d ) . '"' . selected( $d, OAuth::grant_days(), false ) . '>' . esc_html( $text ) . '</option>';
 		}
-		echo '</select><p class="description">PM が「許可する」を押した日から、この期間つながります。切れたら、新しい招待コードで許可し直します（短い試しなら短く、担当の PM なら長くします）。「無期限」は、一覧で「止める」を押すか、公開の前に片付けるまで使えます。</p></td></tr>';
+		echo '</select><p class="description">指示者が「許可する」を押した日から、この期間つながります。切れたら、新しい招待コードで許可し直します（短い試しなら短く、担当の指示者なら長くします）。「無期限」は、一覧で「止める」を押すか、公開の前に片付けるまで使えます。</p></td></tr>';
 		echo '<tr><th><label for="scm-invite-url">入口の URL</label></th><td><input id="scm-invite-url" name="url" class="large-text code" value="' . esc_attr( $endpoint ) . '"><p class="description">AI に教える入口です。https:// の入口があれば https:// にしてください（AI によっては、http:// ではブラウザで許可する接続を使えません）。「/wp-json/…」の部分は変えないでください。</p></td></tr>';
 		echo '</table>';
 		submit_button( '招待コードを発行する', 'primary', 'submit', true );
@@ -397,7 +397,7 @@ final class SettingsPage {
 	 */
 	private static function token_section( array $users, string $endpoint ): void {
 		echo '<h2>トークンを発行する</h2>';
-		echo '<p>発行すると、PM が自分の AI（Claude Code・Codex など）にそのまま貼るだけの文が出ます。AI が自分で MCP の設定に登録します。デモサイトで発行しておけば、デモサイトからコピーしたサイトでも、同じトークンが使えます（入口の URL だけサイトごとに変えます）。トークンは合鍵と同じです。漏れたら下の一覧で「止める」を押してください。</p>';
+		echo '<p>発行すると、指示者が自分の AI（Claude Code・Codex など）にそのまま貼るだけの文が出ます。AI が自分で MCP の設定に登録します。デモサイトで発行しておけば、デモサイトからコピーしたサイトでも、同じトークンが使えます（入口の URL だけサイトごとに変えます）。トークンは合鍵と同じです。漏れたら下の一覧で「止める」を押してください。</p>';
 
 		$result = null;
 		$error  = '';
@@ -449,9 +449,9 @@ final class SettingsPage {
 				echo '<textarea id="' . esc_attr( $id ) . '" class="large-text code" rows="' . (int) $rows . '" readonly onclick="this.select()">' . esc_textarea( $text ) . '</textarea>';
 				echo '<button type="button" class="button" onclick="var t=document.getElementById(\'' . esc_attr( $id ) . '\');t.select();if(navigator.clipboard){navigator.clipboard.writeText(t.value);}else{document.execCommand(\'copy\');}this.textContent=\'コピーしました\';">コピー</button>';
 			};
-			$copy( 'scm-t-prompt', 'AI に貼る文（Claude Code・Codex など）：これを PM に送り、PM は自分の AI にそのまま貼るだけです', $cmd['prompt'], 14 );
+			$copy( 'scm-t-prompt', 'AI に貼る文（Claude Code・Codex など）：これを指示者に送り、指示者は自分の AI にそのまま貼るだけです', $cmd['prompt'], 14 );
 			if ( DesktopExtension::available() ) {
-				echo '<p style="margin:14px 0 4px"><strong>Claude デスクトップアプリ（チャット）を使う PM</strong>：このサイト用の拡張機能のファイルと、下のトークンを送ります。PM はファイルを開いて、トークンを貼ります（ファイルにトークンは入っていません）。</p>';
+				echo '<p style="margin:14px 0 4px"><strong>Claude デスクトップアプリ（チャット）を使う指示者</strong>：このサイト用の拡張機能のファイルと、下のトークンを送ります。指示者はファイルを開いて、トークンを貼ります（ファイルにトークンは入っていません）。</p>';
 				echo DesktopExtension::form( $result['url'], $result['basic'], '拡張機能（' . $result['name'] . '.mcpb）をダウンロード' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- form() でエスケープ済み
 			}
 			$copy( 'scm-t-token', 'トークン', $result['token'], 1 );
@@ -460,7 +460,7 @@ final class SettingsPage {
 			$copy( 'scm-t-codex', 'Codex：ターミナルで実行（~/.codex/config.toml に足します）', $cmd['codex'], 6 );
 			$copy( 'scm-t-json', 'ほかの AI（mcpServers の形の設定。Cursor など）', $cmd['json'], 9 );
 			echo '</details>';
-			echo '<p class="description" style="margin-top:12px">デモサイトからコピーしたサイトで使うときは、上の文の名前と URL を、そのサイトのものに変えるだけです（トークンは同じ）。PM が AI に「同じトークンで、この URL の MCP をもう1つ足して」と頼んでもかまいません。</p>';
+			echo '<p class="description" style="margin-top:12px">デモサイトからコピーしたサイトで使うときは、上の文の名前と URL を、そのサイトのものに変えるだけです（トークンは同じ）。指示者が AI に「同じトークンで、この URL の MCP をもう1つ足して」と頼んでもかまいません。</p>';
 			echo '</div>';
 		}
 
@@ -484,7 +484,7 @@ final class SettingsPage {
 			'ng'   => '問題あり',
 			'info' => '情報',
 		);
-		echo '<p>表示するだけで、何も書き込みません。この画面は管理者だけが見られます（PM には、エラーのコードと短い説明だけが伝わります）。</p><table class="widefat striped"><thead><tr><th>項目</th><th>結果</th><th>内容</th><th>対処</th></tr></thead><tbody>';
+		echo '<p>表示するだけで、何も書き込みません。この画面は管理者だけが見られます（指示者には、エラーのコードと短い説明だけが伝わります）。</p><table class="widefat striped"><thead><tr><th>項目</th><th>結果</th><th>内容</th><th>対処</th></tr></thead><tbody>';
 		foreach ( Diagnostics::collect() as $row ) {
 			$color = 'ng' === $row['status'] ? ' style="color:#b32d2e;font-weight:600"' : ( 'warn' === $row['status'] ? ' style="color:#996800;font-weight:600"' : '' );
 			echo '<tr><td>' . esc_html( $row['label'] ) . '</td><td' . $color . '>' . esc_html( $labels[ $row['status'] ] ?? $row['status'] ) . '</td><td>' . esc_html( $row['detail'] ) . '</td><td>' . esc_html( $row['remedy'] ) . '</td></tr>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- $color は固定の文字列
@@ -616,7 +616,7 @@ final class SettingsPage {
 	 */
 	private static function issue_section( array $users, string $endpoint ): void {
 		echo '<h3>接続コードを発行する（中継プログラムの setup 用）</h3>';
-		echo '<p>PM のパソコン1台につき1つ発行します。中継プログラム（setup --clipboard）で設定します。コードは合鍵と同じです（持っている人は、その PM として下書きを作れます）。漏れたら下の一覧で「止める」を押してください。</p>';
+		echo '<p>指示者のパソコン1台につき1つ発行します。中継プログラム（setup --clipboard）で設定します。コードは合鍵と同じです（持っている人は、その指示者として下書きを作れます）。漏れたら下の一覧で「止める」を押してください。</p>';
 
 		$result = null;
 		$error  = '';
@@ -654,7 +654,7 @@ final class SettingsPage {
 				. $result['code'];
 			echo '<div class="notice notice-success inline" style="padding:12px 16px">';
 			echo '<p><strong>発行しました（鍵 ID ' . esc_html( $result['key_id'] ) . '）。この画面を閉じると、コードは二度と表示されません。</strong></p>';
-			echo '<p>次の文を、そのまま PM に DM で送ってください（PM は文ごとコピーしても、コードだけコピーしても使えます）。</p>';
+			echo '<p>次の文を、そのまま指示者に DM で送ってください（指示者は文ごとコピーしても、コードだけコピーしても使えます）。</p>';
 			echo '<textarea id="scm-issued" class="large-text code" rows="5" readonly onclick="this.select()">' . esc_textarea( $message ) . '</textarea>';
 			echo '<p><button type="button" class="button button-primary" onclick="var t=document.getElementById(\'scm-issued\');t.select();if(navigator.clipboard){navigator.clipboard.writeText(t.value);}else{document.execCommand(\'copy\');}this.textContent=\'コピーしました\';">送る文をコピー</button></p>';
 			echo '<p class="description">入口：' . esc_html( $result['url'] ) . '　／　AI への登録の名前：ship-content-' . esc_html( $result['name'] ) . '</p>';
@@ -662,7 +662,7 @@ final class SettingsPage {
 		}
 
 		if ( array() === $users ) {
-			echo '<p>MCP を使えるユーザーがいません。まず「ユーザー → 新規追加」で、権限グループ「' . esc_html( Consts::ROLE_LABEL ) . '」のユーザーを PM ごとに作ってください。</p>';
+			echo '<p>MCP を使えるユーザーがいません。まず「ユーザー → 新規追加」で、権限グループ「' . esc_html( Consts::ROLE_LABEL ) . '」のユーザーを指示者ごとに作ってください。</p>';
 			return;
 		}
 		$action = admin_url( 'options-general.php?page=' . self::SLUG . '&tab=keys' );
@@ -676,9 +676,9 @@ final class SettingsPage {
 			echo '<option value="' . esc_attr( (string) $u->ID ) . '"' . disabled( '' !== $why, true, false ) . '>' . esc_html( $u->display_name . '（' . $u->user_login . '）' . ( '' !== $why ? ' — 使えません：' . $why : '' ) ) . '</option>';
 		}
 		echo '</select></td></tr>';
-		echo '<tr><th><label for="scm-issue-label">端末の名前</label></th><td><input id="scm-issue-label" name="label" class="regular-text" maxlength="100" placeholder="例：PM 山田 MacBook"><p class="description">あとで「止める」ときに見分けるための名前です。</p></td></tr>';
+		echo '<tr><th><label for="scm-issue-label">端末の名前</label></th><td><input id="scm-issue-label" name="label" class="regular-text" maxlength="100" placeholder="例：山田 MacBook"><p class="description">あとで「止める」ときに見分けるための名前です。</p></td></tr>';
 		echo '<tr><th><label for="scm-issue-url">入口の URL</label></th><td><input id="scm-issue-url" name="url" class="large-text code" value="' . esc_attr( $endpoint ) . '"><p class="description">同じサイトに https:// の入口（正しい証明書）があれば、https:// に変えてください（文章・写真が暗号化されます）。「/wp-json/…」の部分は変えないでください。</p></td></tr>';
-		echo '<tr><th><label for="scm-issue-basic">Basic 認証（ある場合だけ）</label></th><td><input id="scm-issue-basic" name="basic_auth" class="regular-text code" autocomplete="off" placeholder="ID:パスワード"><p class="description">公開前などで、サーバーの Basic 認証がかかっているサイトだけ入れます。コードに入れて PM に渡し、サーバーには保存しません。</p></td></tr>';
+		echo '<tr><th><label for="scm-issue-basic">Basic 認証（ある場合だけ）</label></th><td><input id="scm-issue-basic" name="basic_auth" class="regular-text code" autocomplete="off" placeholder="ID:パスワード"><p class="description">公開前などで、サーバーの Basic 認証がかかっているサイトだけ入れます。コードに入れて指示者に渡し、サーバーには保存しません。</p></td></tr>';
 		echo '</table>';
 		submit_button( '接続コードを発行する', 'primary', 'submit', true );
 		echo '</form>';

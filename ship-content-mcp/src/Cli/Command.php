@@ -285,7 +285,7 @@ final class Command {
 	 * : invite・token・issue・add のとき：使うユーザーの ID（Content MCP Operator のユーザー。invite・token では new で MCP 用のユーザーを作る）
 	 *
 	 * [--label=<label>]
-	 * : invite・token・issue・add のとき：PM・端末の名前
+	 * : invite・token・issue・add のとき：指示者・端末の名前
 	 *
 	 * [--days=<n>]
 	 * : invite のとき：招待コードの期限（日。既定は設定の値、初期 7）
@@ -328,7 +328,7 @@ final class Command {
 			AuditLog::write( 'admin', 'ok', '', 'invite issued via cli for user #' . $user_id . ' grant ' . $inv['grant_days'] . 'd', array( 'key_id' => $inv['key_id'], 'auth' => 'cli' ) );
 			\WP_CLI::log( 'SHIP_MCP_KEY_ID=' . $inv['key_id'] );
 			\WP_CLI::log( '接続の期限：' . ( \ShipContentMcp\Security\OAuth::GRANT_UNLIMITED === $inv['grant_days'] ? '無期限（止めるまで）' : '許可した日から ' . $inv['grant_days'] . ' 日' ) );
-			\WP_CLI::log( '招待コード（この1回だけ表示。PM はブラウザの「接続の許可」の画面に入れる。AI には貼らない。' . $inv['expires_at'] . ' UTC まで・1回だけ）：' );
+			\WP_CLI::log( '招待コード（この1回だけ表示。指示者はブラウザの「接続の許可」の画面に入れる。AI には貼らない。' . $inv['expires_at'] . ' UTC まで・1回だけ）：' );
 			\WP_CLI::line( $inv['code'] );
 			\WP_CLI::log( '--- AI に貼る文（秘密は入っていない） ---' );
 			\WP_CLI::log( \ShipContentMcp\Security\OAuth::pm_prompt( 'ship-' . ConnectionCode::default_name( $url ), $url ) );
@@ -406,7 +406,7 @@ final class Command {
 			AuditLog::write( 'admin', 'ok', '', 'connection code issued via cli for user #' . $user_id, array( 'key_id' => $r['key_id'], 'auth' => 'cli' ) );
 			\WP_CLI::log( 'SHIP_MCP_KEY_ID=' . $r['key_id'] );
 			\WP_CLI::log( '入口：' . $r['url'] . '（AI への登録の名前：ship-content-' . $r['name'] . '）' );
-			\WP_CLI::log( '接続コード（この1回だけ表示。PM に DM で渡す。合鍵と同じなので、共有のチャンネルに貼らない）：' );
+			\WP_CLI::log( '接続コード（この1回だけ表示。指示者に DM で渡す。合鍵と同じなので、共有のチャンネルに貼らない）：' );
 			\WP_CLI::line( $r['code'] );
 			\WP_CLI::success( '発行しました' );
 			return;
@@ -566,7 +566,7 @@ final class Command {
 		);
 		if ( array() !== $ops ) {
 			wp_set_current_user( (int) $ops[0] );
-			$this->check( 'T23 MCP の入口の外からは拒否（PM のユーザーでも）', is_wp_error( AccessGate::ability() ) );
+			$this->check( 'T23 MCP の入口の外からは拒否（指示者のユーザーでも）', is_wp_error( AccessGate::ability() ) );
 		}
 		$this->check( 'T24 Cookie での接続は拒否', is_wp_error( AccessGate::transport() ) );
 		wp_set_current_user( $saved_user );

@@ -166,7 +166,7 @@ $check( 'OAuth：アクセストークンは接続の期限まで（1時間で�
 $fix_ok = true;
 foreach ( array_keys( \ShipContentMcp\Core\DomainError::MESSAGES ) as $c ) {
 	$f       = \ShipContentMcp\Core\DomainError::FIX[ $c ] ?? null;
-	$fix_ok  = $fix_ok && is_array( $f ) && in_array( $f[0], array( 'admin', 'pm', 'ai' ), true ) && '' !== $f[1];
+	$fix_ok  = $fix_ok && is_array( $f ) && in_array( $f[0], array( 'admin', 'requester', 'ai' ), true ) && '' !== $f[1];
 }
 $e1 = new \ShipContentMcp\Core\DomainError( 'WRITE-001' );
 $e2 = new \ShipContentMcp\Core\DomainError( 'ACF-001' );
@@ -194,7 +194,7 @@ $pg = \ShipContentMcp\MCP\Abilities::photo_guide( 12 );
 $pgs = implode( "\n", array_merge( $pg['by_source'], $pg['when_stuck'] ) );
 $check(
 	'写真の出どころ別の手順と、取り込めないときの案内（0.9.8）：方法の順番・次の方法に移る・誤りのコード・最後は写真なしで下書き・管理画面で代わりをしない',
-	5 === count( $pg['by_source'] ) && str_contains( $pg['by_source'][0], 'import-image-url' ) && str_contains( $pg['by_source'][1], 'get-upload-url' ) && str_contains( $pg['by_source'][2], 'how_to_send' ) && str_contains( $pg['by_source'][3], 'PM に' ) && str_contains( $pg['by_source'][4], '写真なしで下書き' )
+	5 === count( $pg['by_source'] ) && str_contains( $pg['by_source'][0], 'import-image-url' ) && str_contains( $pg['by_source'][1], 'get-upload-url' ) && str_contains( $pg['by_source'][2], 'how_to_send' ) && str_contains( $pg['by_source'][3], '指示者に' ) && str_contains( $pg['by_source'][4], '写真なしで下書き' )
 	&& str_contains( $pgs, '2回失敗したら' ) && str_contains( $pgs, 'MEDIA-001' ) && str_contains( $pgs, 'MEDIA-002' ) && str_contains( $pgs, 'MEDIA-003' ) && str_contains( $pgs, '12MB' ) && str_contains( $pgs, '管理画面・ログイン・ブラウザで代わりに上げない' )
 	&& str_contains( $abil_src, "'photos' => self::photo_guide(" ) && str_contains( $ins, 'meta.photos' )
 );
@@ -274,7 +274,14 @@ preg_match_all( "/'([a-z0-9_]+)'/", $im[1] ?? '', $listed );
 $check( '使い方タブ：使う画像がすべて assets/help にあり、一覧（IMAGES）とそろっている', count( $help_imgs ) >= 15 && array() === $missing && array() === array_diff( $help_imgs, $listed[1] ) && array() === array_diff( $listed[1], $help_imgs ) );
 $check( '使い方タブ：取説の文にサイト名・ドメイン・入口の URL を差し込まない（どの案件でも同じ文。期限の日数だけ設定の値）', ! str_contains( $help_src, '{site}' ) && ! str_contains( $help_src, '{https}' ) && ! str_contains( $help_src, '{endpoint}' ) && ! str_contains( $help_src, 'get_bloginfo' ) && ! str_contains( $help_src, 'home_url' ) && ! preg_match( '/esc_html\\( \\$endpoint/', $help_src ) && str_contains( $help_src, '{invite_days}' ) && str_contains( $help_src, "ENTRY_EXAMPLE = 'https://（サイトのドメイン）/wp-json/ship-content/mcp'" ) );
 $sp_src = (string) file_get_contents( __DIR__ . '/../../ship-content-mcp/src/Admin/SettingsPage.php' );
-$check( '使い方タブ：管理者向けと PM 向けの2つのタブに分かれている', str_contains( $sp_src, "'help'        => '使い方（管理者向け）'" ) && str_contains( $sp_src, "'help_pm'     => '使い方（PM 向け）'" ) && str_contains( $sp_src, "HelpPage::render( 'pm' )" ) && str_contains( $sp_src, "HelpPage::render( 'admin' )" ) && str_contains( $help_src, "if ( 'pm' === \$who ) {\n\t\t\tself::pm();\n\t\t} else {\n\t\t\tself::status( \$s );\n\t\t\tself::admin();" ) );
+$pm_left = array();
+foreach ( new RecursiveIteratorIterator( new RecursiveDirectoryIterator( __DIR__ . '/../../ship-content-mcp/src' ) ) as $pf ) {
+	if ( $pf->isFile() && preg_match( '/(?<![A-Za-z_])PM(?![A-Za-z_0-9])/', (string) file_get_contents( $pf->getPathname() ) ) ) {
+		$pm_left[] = $pf->getFilename();
+	}
+}
+$check( '表示・AI への案内に「PM」を使わない（指示者。誰が直すかは requester。0.9.18）', array() === $pm_left && str_contains( (string) file_get_contents( __DIR__ . '/../../ship-content-mcp/src/Core/DomainError.php' ), "array( 'requester', " ) );
+$check( '使い方タブ：管理者向けと指示者向けの2つのタブに分かれている', str_contains( $sp_src, "'help'        => '使い方（管理者向け）'" ) && str_contains( $sp_src, "'help_pm'     => '使い方（指示者向け）'" ) && str_contains( $sp_src, "HelpPage::render( 'pm' )" ) && str_contains( $sp_src, "HelpPage::render( 'admin' )" ) && str_contains( $help_src, "if ( 'pm' === \$who ) {\n\t\t\tself::pm();\n\t\t} else {\n\t\t\tself::status( \$s );\n\t\t\tself::admin();" ) );
 
 $fail = 0;
 foreach ( $results as [ $name, $ok ] ) {

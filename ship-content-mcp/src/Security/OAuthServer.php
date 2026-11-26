@@ -5,7 +5,7 @@
  * - /.well-known/oauth-protected-resource（…/wp-json/ship-content/mcp）：この MCP の認証の窓口の案内
  * - /.well-known/oauth-authorization-server：窓口の入口の一覧
  * - /wp-json/ship-content/oauth/register：AI の登録（AI が自動で呼ぶ）
- * - /wp-json/ship-content/oauth/authorize：「接続の許可」の画面（PM のブラウザで開く。招待コードを入れて許可）
+ * - /wp-json/ship-content/oauth/authorize：「接続の許可」の画面（指示者のブラウザで開く。招待コードを入れて許可）
  * - /wp-json/ship-content/oauth/token・revoke：トークンの発行・更新・取り消し（AI が自動で呼ぶ）
  * - MCP の入口の 401 に WWW-Authenticate（Bearer resource_metadata=…）を付ける（AI が窓口を見つけるため）
  *

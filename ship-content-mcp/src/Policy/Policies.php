@@ -43,7 +43,7 @@ final class Policies {
 		$type     = $p['types'][ $post_type ] ?? self::entry( array() );
 		$warnings = array();
 		if ( '' === $p['site']['text'] && '' === $type['text'] ) {
-			$warnings[] = '制作方針がまだ設定されていません。PM の指示と、既存の記事を参考にしてください。';
+			$warnings[] = '制作方針がまだ設定されていません。指示者の指示と、既存の記事を参考にしてください。';
 		} elseif ( '' === $type['text'] ) {
 			$warnings[] = 'この投稿タイプの制作方針はまだ設定されていません（サイト共通の方針だけがあります）。';
 		}

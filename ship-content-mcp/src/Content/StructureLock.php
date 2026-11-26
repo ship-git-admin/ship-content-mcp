@@ -157,6 +157,6 @@ final class StructureLock {
 			$g       = function_exists( 'acf_get_field_group' ) ? acf_get_field_group( $k ) : null;
 			$names[] = is_array( $g ) && '' !== (string) ( $g['title'] ?? '' ) ? (string) $g['title'] : $k;
 		}
-		return '入力欄（ACF）の構造が、サイト管理者が確かめた後に変わっています（' . implode( '、', $names ) . '）。書き込みは止めていません。get-acf-schema の今の構造（field key・文字数の上限・選択肢）に従ってください。制作方針に今はない欄の名前があれば、PM に伝えてください。PM には「入力欄が変わったので、管理者に確かめ直してもらってください」と伝えてください。';
+		return '入力欄（ACF）の構造が、サイト管理者が確かめた後に変わっています（' . implode( '、', $names ) . '）。書き込みは止めていません。get-acf-schema の今の構造（field key・文字数の上限・選択肢）に従ってください。制作方針に今はない欄の名前があれば、指示者に伝えてください。指示者には「入力欄が変わったので、管理者に確かめ直してもらってください」と伝えてください。';
 	}
 }

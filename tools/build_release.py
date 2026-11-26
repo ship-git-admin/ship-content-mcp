@@ -2,7 +2,7 @@
 """配布用 ZIP（ship-content-mcp-<version>.zip）と中継プログラム（ship-content-mcp-bridge.mjs）を作り、中身を検査する。
 
 - ZIP の中は常に ship-content-mcp/ から始まる（WordPress がこの名前のフォルダに展開する）。
-- 中継プログラム（bridge/）も、版（VERSION）を確かめて dist/ に写す（リリースに添付し、PM が受け取る）。
+- 中継プログラム（bridge/）も、版（VERSION）を確かめて dist/ に写す（リリースに添付し、指示者が受け取る）。
 - 含めないもの：Markdown（.md）、.DS_Store など。
 - 検査：必須ファイル・ライセンス、秘密やサイト固有情報（tools/secret_scan.py と同じ規則）、
   同梱ライブラリの指紋（vendor.lock.json）、プラグインのヘッダー、版の一致（ヘッダー・定数・readme・タグ）、PHP の構文。

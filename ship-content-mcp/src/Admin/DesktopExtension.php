@@ -2,10 +2,10 @@
 /**
  * Claude デスクトップアプリ用の拡張機能（.mcpb）を、このサイト専用に作ってダウンロードさせる。
  *
- * - 中身は manifest.json と中継プログラム（assets/bridge/ship-content-mcp-bridge.mjs）だけ。トークンは入れない（PM が設定の欄に貼る）。
- * - 入口の URL（と、公開前のサイトなら Basic 認証）は、ダウンロードのときに入れておく。PM はトークンを貼るだけ。
- * - 名前をサイトごとに変える（ship-content-<短い名前>）ので、1人の PM が複数のサイトの拡張機能を並べて入れられる。
- * - 形式は MCPB（manifest_version 0.3、server.type node）。Claude デスクトップは Node.js を同梱しているので、PM は何も入れなくてよい。
+ * - 中身は manifest.json と中継プログラム（assets/bridge/ship-content-mcp-bridge.mjs）だけ。トークンは入れない（指示者が設定の欄に貼る）。
+ * - 入口の URL（と、公開前のサイトなら Basic 認証）は、ダウンロードのときに入れておく。指示者はトークンを貼るだけ。
+ * - 名前をサイトごとに変える（ship-content-<短い名前>）ので、1人の指示者が複数のサイトの拡張機能を並べて入れられる。
+ * - 形式は MCPB（manifest_version 0.3、server.type node）。Claude デスクトップは Node.js を同梱しているので、指示者は何も入れなくてよい。
  *
  * @package ShipContentMcp
  */

@@ -4,7 +4,7 @@
  *
  * - 成功：{ ok:true, data:{...}, request_id, warnings:[...], meta:{...} }
  * - 失敗：{ ok:false, error:{ code, message, admin_detail, retryable, who_fixes, next_step }, request_id }
- *   who_fixes は誰が直すか（admin＝管理者・pm＝PM・ai＝AI）。admin のときだけ、AI は PM に「管理者に送る文」を作る。
+ *   who_fixes は誰が直すか（admin＝管理者・requester＝指示者・ai＝AI）。admin のときだけ、AI は指示者に「管理者に送る文」を作る。
  *   MCP では「エラーの印（isError）付きの文章」として返る（公式 Adapter は WP_Error の文だけを返すため、文に上の JSON を入れる）。
  * - 秘密・サーバーの詳細を入れない（admin_detail も、IP・鍵・パスワードを含めない短い理由だけ）。
  *
