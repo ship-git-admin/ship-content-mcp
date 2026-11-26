@@ -54,6 +54,7 @@ final class Abilities {
 		'4. validate-draft で確かめ、制作方針に合っているかも自分で確かめて、PM に見せてから、create-draft（新しい下書き）か update-draft（下書きを直す）で保存する。保存には policy_version（creation_policy.version）を付ける。方針が変わっていると保存されない（POLICY-002）ので、get-creation-policy で読み直し、方針に合わせてから送り直す。',
 		'5. 保存した後は get-post で読み戻す。',
 		'ツールが見つからない・使えないときも、WordPress の管理画面・ログイン・ブラウザで代わりをしない。',
+		'この手順や meta.tools にあるツールが、あなたのツールの一覧にないときは、AI のアプリが前の一覧のまま（サイトのプラグインが新しくなった）。会話の途中ではつなぎ直せないので、作業を下書きに保存し、下書きの ID・写真の attachment_id・残りの作業をまとめて、PM に「新しい会話で始め直す（Codex などはアプリを開き直してもよい。ログインし直しは要らない）」よう伝える。MCP の入口を curl などで直接呼ばない（トークンは AI のアプリが持っているので 401 になる。接続が切れたのではない）。',
 	);
 
 	/** get-acf-schema の返事に付ける、画像の欄の入れ方。 */
@@ -729,6 +730,9 @@ final class Abilities {
 				'notice' => '下書きの作成・修正ができるのは writable が true の投稿タイプだけです。公開・削除はできません。',
 				'steps'  => self::STEPS,
 				'photos' => self::photo_guide( (int) Settings::get()['media_max_mb'] ),
+				// この版のツール（AI のアプリでの名前）。AI が自分の一覧と比べ、足りなければ新しい会話でつなぎ直す（0.9.15）。
+				'tools'  => self::client_tool_names(),
+				'plugin_version' => SHIP_CONTENT_MCP_VERSION,
 			),
 		);
 	}
@@ -1016,6 +1020,15 @@ final class Abilities {
 	 */
 	public static function import_image_url( array $input ): array {
 		return ( new UploadService() )->import_url( $input );
+	}
+
+	/**
+	 * AI のアプリに見えるツールの名前（MCP Adapter は「/」を「-」にする。例：ship-content-add-term）。
+	 *
+	 * @return list<string>
+	 */
+	public static function client_tool_names(): array {
+		return array_map( static fn( string $t ) => str_replace( '/', '-', $t ), self::TOOLS );
 	}
 
 	/**

@@ -3,7 +3,7 @@ Contributors: shipinc
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.9.14
+Stable tag: 0.9.15
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -17,6 +17,9 @@ WordPress 側では AI を呼びません。公開・予約・削除・ACF の�
 読み取り（投稿タイプ・制作方針・入力欄の構造・記事）、下書きの検証・作成・修正、分類の語の追加、写真の登録（アップロード用 URL・分割転送・URL からの取り込み）のツールがあります。
 
 == Changelog ==
+
+= 0.9.15 =
+* プラグインが新しくなる前に始めた AI の会話では、新しいツールが一覧に出ない。最初のツールの返事に、この版のツールの名前を入れ、足りなければ新しい会話でつなぎ直すよう案内する。
 
 = 0.9.14 =
 * 分類の語を足す add-term の、親と数の制限を外した（見出しになる親の語も足せる。24時間の上限はなし）。

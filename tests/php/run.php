@@ -250,6 +250,11 @@ $check(
 	&& str_contains( $pt_src, "\$row['can_add_terms'] = \$row['public'] && TermService::enabled() && self::writable( \$post_type );" ) && str_contains( $set_src, "'allow_add_terms'        => true," )
 	&& 'ai' === ( new \ShipContentMcp\Core\DomainError( 'TERM-002' ) )->who_fixes() && 'admin' === ( new \ShipContentMcp\Core\DomainError( 'TERM-001' ) )->who_fixes() && str_contains( $abil_src, "'Add a category / taxonomy term" )
 );
+$check(
+	'手順にあるツールが一覧にないときは、新しい会話でつなぎ直す・直接呼ばない。最初の返事にこの版のツールの名前（0.9.15）',
+	str_contains( $steps, 'meta.tools' ) && str_contains( $steps, '新しい会話で始め直す' ) && str_contains( $steps, '401' ) && str_contains( $abil_src, "'tools'  => self::client_tool_names()," )
+	&& in_array( 'ship-content-add-term', \ShipContentMcp\MCP\Abilities::client_tool_names(), true ) && count( \ShipContentMcp\MCP\Abilities::client_tool_names() ) === count( \ShipContentMcp\MCP\Abilities::TOOLS )
+);
 $us_src = (string) file_get_contents( __DIR__ . '/../../ship-content-mcp/src/Media/UploadService.php' );
 $check( '写真の URL から取り込む：wp_safe_remote_get・http(s) だけ・大きさの上限・中身で判定・ホスト名だけ記録', str_contains( $us_src, 'wp_safe_remote_get(' ) && str_contains( $us_src, "array( 'http', 'https' )" ) && str_contains( $us_src, 'wp_http_validate_url( $url )' ) && str_contains( $us_src, "'limit_response_size' => \$max + 1" ) && str_contains( $us_src, 'ImageSniff::sniff( substr( $body, 0, 16 ) )' ) && in_array( 'ship-content/import-image-url', \ShipContentMcp\MCP\Abilities::TOOLS, true ) );
 
