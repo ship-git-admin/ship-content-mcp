@@ -13,7 +13,9 @@
 
 namespace ShipContentMcp\Content;
 
+use ShipContentMcp\ACF\Conditions;
 use ShipContentMcp\ACF\SchemaReader;
+use ShipContentMcp\ACF\Validator;
 use ShipContentMcp\Core\DomainError;
 
 defined( 'ABSPATH' ) || exit;
@@ -59,6 +61,7 @@ final class PostReader {
 		$data = array(
 			'post'               => self::summary( $post ),
 			'content'            => (string) $post->post_content,
+			'view'               => self::view( $schema['data']['field_groups'], $values ),
 			'acf'                => $acf,
 			'schema_fingerprint' => $schema['data']['schema_fingerprint'],
 			'if_match'           => self::token( $post, $schema['data']['field_groups'] ),
@@ -155,6 +158,146 @@ final class PostReader {
 			}
 		}
 		return $out;
+	}
+
+	/**
+	 * 見た目の組み立て（0.9.20）：画面に出る値だけを、欄の名前（ラベル）で並べる。
+	 * 条件（conditional_logic）で表示されない欄・空の欄は入れない。画像・関連は #ID、選択肢は「ラベル（値）」。
+	 * 見本・参考にする記事の組み立てと書き方を読むためのもの（保存には acf の形を使う）。
+	 *
+	 * @param list<array<string,mixed>> $groups
+	 * @param array<string,mixed>       $values field key => 保存されたままの値
+	 * @return array<string,mixed>
+	 */
+	public static function view( array $groups, array $values ): array {
+		$fields = array();
+		foreach ( $groups as $g ) {
+			foreach ( (array) ( $g['fields'] ?? array() ) as $f ) {
+				if ( 'presentational' !== ( $f['write_support'] ?? '' ) ) {
+					$fields[] = $f;
+				}
+			}
+		}
+		return self::view_row( $fields, $values, array() );
+	}
+
+	/**
+	 * @param list<array<string,mixed>> $fields
+	 * @param array<string,mixed>       $row        field key => 値
+	 * @param array<string,mixed>       $parent_ctx 上の階層の値（条件に使う）
+	 * @return array<string,mixed>
+	 */
+	private static function view_row( array $fields, array $row, array $parent_ctx ): array {
+		$ctx = $row + $parent_ctx;
+		$out = array();
+		foreach ( $fields as $f ) {
+			if ( ! Conditions::visible( $f, $ctx ) ) {
+				continue;
+			}
+			$v = self::view_value( $f, $row[ (string) ( $f['key'] ?? '' ) ] ?? null, $ctx );
+			if ( null === $v ) {
+				continue;
+			}
+			$label = (string) ( $f['label'] ?? '' );
+			if ( '' === $label ) {
+				$label = (string) ( $f['name'] ?? '' );
+			}
+			if ( array_key_exists( $label, $out ) ) {
+				$label .= '（' . (string) ( $f['name'] ?? '' ) . '）';
+			}
+			$out[ $label ] = $v;
+		}
+		return $out;
+	}
+
+	/**
+	 * @param array<string,mixed> $f
+	 * @param mixed               $v
+	 * @param array<string,mixed> $ctx
+	 * @return mixed 出さないときは null
+	 */
+	private static function view_value( array $f, $v, array $ctx ) {
+		switch ( (string) ( $f['type'] ?? '' ) ) {
+			case 'group':
+				if ( ! is_array( $v ) ) {
+					return null;
+				}
+				$o = self::view_row( (array) ( $f['sub_fields'] ?? array() ), $v, $ctx );
+				return array() === $o ? null : $o;
+			case 'repeater':
+				if ( ! is_array( $v ) ) {
+					return null;
+				}
+				$rows = array();
+				foreach ( $v as $r ) {
+					if ( is_array( $r ) ) {
+						$o = self::view_row( (array) ( $f['sub_fields'] ?? array() ), $r, $ctx );
+						if ( array() !== $o ) {
+							$rows[] = $o;
+						}
+					}
+				}
+				return array() === $rows ? null : $rows;
+			case 'flexible_content':
+				if ( ! is_array( $v ) ) {
+					return null;
+				}
+				$layouts = array();
+				foreach ( (array) ( $f['layouts'] ?? array() ) as $l ) {
+					$layouts[ (string) ( $l['name'] ?? '' ) ] = $l;
+				}
+				$rows = array();
+				foreach ( $v as $r ) {
+					if ( ! is_array( $r ) ) {
+						continue;
+					}
+					$name   = (string) ( $r['acf_fc_layout'] ?? '' );
+					$l      = $layouts[ $name ] ?? null;
+					$label  = null !== $l ? (string) ( $l['label'] ?? '' ) : '';
+					$rows[] = array( 'ブロック' => '' !== $label ? $label . '（' . $name . '）' : $name )
+						+ ( null !== $l ? self::view_row( (array) ( $l['sub_fields'] ?? array() ), $r, $ctx ) : array() );
+				}
+				return array() === $rows ? null : $rows;
+			case 'true_false':
+				return ( is_scalar( $v ) && '1' === (string) $v ) ? 'はい' : null;
+			case 'radio':
+			case 'select':
+			case 'button_group':
+			case 'checkbox':
+				if ( Validator::is_empty( $v ) ) {
+					return null;
+				}
+				$label = Conditions::choice_label( $f, $v );
+				$raw   = is_array( $v ) ? implode( ',', array_map( static fn( $x ) => is_scalar( $x ) ? (string) $x : '', $v ) ) : ( is_scalar( $v ) ? (string) $v : '' );
+				return $label === $raw ? $label : $label . '（' . $raw . '）';
+			case 'image':
+			case 'file':
+				$id = is_array( $v ) ? (int) ( $v['ID'] ?? ( $v['id'] ?? 0 ) ) : ( is_scalar( $v ) ? (int) $v : 0 );
+				return $id > 0 ? '#' . $id : null;
+			case 'gallery':
+			case 'relationship':
+			case 'post_object':
+			case 'taxonomy':
+			case 'user':
+				$list = is_array( $v ) ? $v : ( Validator::is_empty( $v ) ? array() : array( $v ) );
+				$ids  = array();
+				foreach ( $list as $x ) {
+					$id = is_array( $x ) ? (int) ( $x['ID'] ?? ( $x['id'] ?? 0 ) ) : ( is_scalar( $x ) ? (int) $x : 0 );
+					if ( $id > 0 ) {
+						$ids[] = '#' . $id;
+					}
+				}
+				return array() === $ids ? null : implode( ' ', $ids );
+			default:
+				if ( is_array( $v ) ) {
+					return Validator::is_empty( $v ) ? null : $v;
+				}
+				if ( ! is_scalar( $v ) ) {
+					return null;
+				}
+				$s = trim( str_replace( "\r\n", "\n", (string) $v ) );
+				return '' === $s ? null : $s;
+		}
 	}
 
 	/**

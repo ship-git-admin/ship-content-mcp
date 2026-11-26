@@ -3,7 +3,7 @@ Contributors: shipinc
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.9.19
+Stable tag: 0.9.20
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -17,6 +17,9 @@ WordPress 側では AI を呼びません。公開・予約・削除・ACF の�
 読み取り（投稿タイプ・制作方針・入力欄の構造・記事）、下書きの検証・作成・修正、分類の語の追加、写真の登録（アップロード用 URL・分割転送・URL からの取り込み）のツールがあります。
 
 == Changelog ==
+
+= 0.9.20 =
+* get-post に view（画面に出る値だけを欄の名前で並べたもの）を足した。見本の記事の組み立てを AI が読み違えないため。条件で画面に出ない欄に値を入れたときだけ知らせるようにした。
 
 = 0.9.19 =
 * 記事作りを AI に頼む人の呼び方を「指示者」から「制作担当者」にした（画面・AI への案内・使い方・手順書）。

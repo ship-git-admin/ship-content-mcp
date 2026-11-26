@@ -103,6 +103,17 @@ final class Validator {
 				$out[ $key ] = $v;
 			}
 		}
+		$ctx = array();
+		foreach ( $changes as $c ) {
+			if ( isset( $c['field_key'] ) && array_key_exists( 'value', (array) $c ) ) {
+				$ctx[ (string) $c['field_key'] ] = $c['value'];
+			}
+		}
+		foreach ( $ctx as $key => $v ) {
+			if ( isset( $this->top[ $key ] ) ) {
+				$this->warn_hidden( $this->top[ $key ], $v, $ctx, $this->top );
+			}
+		}
 		return $out;
 	}
 
@@ -148,9 +159,6 @@ final class Validator {
 		if ( 'planned' !== $support ) {
 			$this->err( $path, 'unsupported_type', 'この型（' . $type . '）は、まだ書き込みに対応していません' );
 			return null;
-		}
-		if ( ! empty( $f['conditional_logic'] ) ) {
-			$this->warnings[] = '条件によって表示される欄に値を入れています（条件を満たさないと表示されません）：' . (string) ( $f['label'] ?? $path );
 		}
 		switch ( $type ) {
 			case 'text':
@@ -519,6 +527,7 @@ final class Validator {
 				$this->err( $path . '.' . $k, 'unknown_sub_field', 'この中にない欄です。入れ子の欄は field key で指定してください（使える欄：' . implode( ', ', $hint ) . '）' );
 				return null;
 			}
+			$this->warn_hidden( $by_key[ $k ], $v, $r, $by_key );
 			$val = $this->value( $by_key[ $k ], $v, $path . '.' . $k );
 			if ( null === $val && $this->has_errors_under( $path . '.' . $k ) ) {
 				return null;
@@ -526,6 +535,22 @@ final class Validator {
 			$out[ $k ] = $val;
 		}
 		return $out;
+	}
+
+	/**
+	 * 条件（表示形式など）で画面に出ない欄に値を入れていたら知らせる（0.9.20。保存は止めない）。
+	 *
+	 * @param array<string,mixed>               $f
+	 * @param mixed                             $v
+	 * @param array<string,mixed>               $ctx      同じ行の値（field key => 値）
+	 * @param array<string,array<string,mixed>> $siblings 同じ行の欄（field key => 欄）
+	 */
+	private function warn_hidden( array $f, $v, array $ctx, array $siblings ): void {
+		if ( empty( $f['conditional_logic'] ) || self::is_empty( $v ) || Conditions::visible( $f, $ctx ) ) {
+			return;
+		}
+		$why = Conditions::why_hidden( $f, $ctx, $siblings );
+		$this->warnings[] = '画面に出ない欄に値を入れています（' . ( '' !== $why ? $why : '表示の条件を満たしていないため' ) . '。出したいなら条件の欄を変え、出さないなら空にしてください）：' . (string) ( $f['label'] ?? '' );
 	}
 
 	/**

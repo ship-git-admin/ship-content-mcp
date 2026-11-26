@@ -48,7 +48,7 @@ final class Abilities {
 
 	/** 最初に呼ぶ list-post-types の返事に付ける、全部の手順（AI がツールを探さなくても、写真まで進めるように。0.9.5）。 */
 	public const STEPS = array(
-		'1. この返事の data.creation_policy（サイト管理者の制作方針）を読む。記事の書き方・文字数・写真の並べ方は、これに従う（迷ったら制作担当者に確認）。次に get-acf-schema で入力欄を読む（参考にする記事は search-posts・get-post）。',
+		'1. この返事の data.creation_policy（サイト管理者の制作方針）を読む。記事の書き方・文字数・写真の並べ方は、これに従う（迷ったら制作担当者に確認）。次に get-acf-schema で入力欄を読む（参考にする記事は search-posts・get-post）。制作方針に見本の記事があれば、get-post の data.view（画面に出る値だけを欄の名前で並べたもの）で、ブロックの並び・どの欄を使い、どの欄が空か・文の長さを読み、その組み立てに合わせる。元の資料（ほかのサイトの記事など）の組み立ては写さず、事実だけを使う。',
 		'2. 分類（カテゴリなど）を決める。post_types[].taxonomies[].terms の語（id）から、制作方針と記事の中身に合うものを選び、create-draft の taxonomies（kind=taxonomy_terms）に入れる。公開されない分類（public=false）は、制作方針に書いてなければ付けない。合う語がなければ、その分類の can_add_terms が true なら add-term で足す（親子のある分類は parent に親の語の id、一番上なら 0。同じ語はそのまま返り、似た語があれば TERM-002 で候補が返るので、それを使うか制作担当者に確かめる）。足した語は制作担当者への報告に書く。can_add_terms が false なら制作担当者に聞く。',
 		'3. 写真・画像があれば、1枚ずつメディアに登録する。誰でも開ける写真の URL があれば import-image-url。手元のファイルは get-upload-url（返ってきた curl を実行）。コマンドでネットワークにつなげないときは prepare-upload → upload-chunk → finish-upload（返事の how_to_send のコマンドの出力をそのまま渡す。base64 を自分で書き写さない）。返った attachment_id を、画像の欄や featured_media に入れる。うまくいかないときは、この返事の meta.photos（写真の出どころ別の手順・取り込めないとき）に従う。',
 		'4. validate-draft で確かめ、制作方針に合っているかも自分で確かめて、制作担当者に見せてから、create-draft（新しい下書き）か update-draft（下書きを直す）で保存する。保存には policy_version（creation_policy.version）を付ける。方針が変わっていると保存されない（POLICY-002）ので、get-creation-policy で読み直し、方針に合わせてから送り直す。',
@@ -379,7 +379,7 @@ final class Abilities {
 		self::add(
 			self::GET_POST,
 			'記事を読む',
-			'記事の題名・本文・分類・アイキャッチと、ACF の値（保存されたままの形：入れ子も field key がキー）を返す。if_match は update-draft に渡す。下書きだけが修正できる（editable）。' . self::UNTRUSTED,
+			'記事の題名・本文・分類・アイキャッチと、ACF の値を2つの形で返す。view：画面に出る値だけを欄の名前で並べたもの（見本・参考の記事の組み立てと書き方を読むとき）。acf：保存されたままの形（入れ子も field key がキー。条件で表示されない古い値も含む。直すときはこの形で送る）。if_match は update-draft に渡す。下書きだけが修正できる（editable）。' . self::UNTRUSTED,
 			array(
 				'type'                 => 'object',
 				'properties'           => array(
@@ -804,7 +804,7 @@ final class Abilities {
 		$post_id     = (int) ( $input['post_id'] ?? 0 );
 		$out         = PostReader::get( (string) ( $input['post_type'] ?? '' ), $post_id );
 		$out['meta'] = array(
-			'notice' => 'acf の value は保存されたままの形です。直すときは、この形のまま update-draft に送ってください。',
+			'notice' => 'view は、画面に出る値だけを欄の名前で並べたものです（条件で表示されない欄・空の欄は入れていません）。見本・参考にするときは view で、ブロックの並び・使っている欄と空の欄・文の長さを読んでください。acf の value は保存されたままの形で、画面に出ない古い値も含みます。直すときは acf の形のまま update-draft に送ってください。',
 			'policy' => self::saved_policy( $post_id ),
 		);
 		return $out;

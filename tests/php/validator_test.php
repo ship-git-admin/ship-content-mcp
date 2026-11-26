@@ -42,11 +42,14 @@ function wp_strip_all_tags( $s ) {
 }
 
 require __DIR__ . '/../../ship-content-mcp/src/Core/DomainError.php';
+require __DIR__ . '/../../ship-content-mcp/src/ACF/Conditions.php';
 require __DIR__ . '/../../ship-content-mcp/src/ACF/Validator.php';
 require __DIR__ . '/../../ship-content-mcp/src/Content/PostReader.php';
 require __DIR__ . '/../../ship-content-mcp/src/Content/Diff.php';
 
+use ShipContentMcp\ACF\Conditions;
 use ShipContentMcp\ACF\Validator;
+use ShipContentMcp\Content\PostReader;
 use ShipContentMcp\Content\Diff;
 
 $p  = static fn( string $key, string $type, array $extra = array() ) => array_merge(
@@ -187,7 +190,47 @@ $check( 'wysiwyg のスクリプトを消す', '<p>本文</p>' === $out['field_w
 [ $out2 ] = $run( array( $c( 'field_ta', "前<script type=\"text/javascript\">alert(1)</script >後<STYLE>p{}</STYLE>" ) ) );
 $check( 'script・style は中身ごと消す（文字を残さない）', '前後' === $out2['field_ta'], $out2['field_ta'] ?? '' );
 $check( '消したことを警告', (bool) preg_grep( '/取り除きました/u', $warn ) );
-$check( '条件表示の欄を警告', (bool) preg_grep( '/条件によって/u', $warn ) );
+$check( '条件の欄を送らないときは警告しない（分からないものは隠さない）', ! preg_grep( '/画面に出ない/u', $warn ) );
+[ , , $warn ] = $run( array( $c( 'field_tf', 0 ), $c( 'field_cond', '条件の欄' ) ) );
+$check( '条件を満たさない欄に書いたら警告（0.9.20）', (bool) preg_grep( '/画面に出ない欄.*ラベル field_cond/u', $warn ), implode( ' / ', $warn ) );
+[ , , $warn ] = $run( array( $c( 'field_tf', 1 ), $c( 'field_cond', '条件の欄' ) ) );
+$check( '条件を満たす欄は警告しない（0.9.20）', ! preg_grep( '/画面に出ない/u', $warn ), implode( ' / ', $warn ) );
+
+// 条件表示（0.9.20）：表示形式で出る欄が変わる行。
+$mode   = $p( 'field_m', 'radio', array( 'label' => '表示形式', 'choices' => array( array( 'value' => '01', 'label' => '見出し+本文' ), array( 'value' => '02', 'label' => '見出し' ), array( 'value' => '03', 'label' => '本文' ) ) ) );
+$catch  = $p( 'field_mc', 'text', array( 'label' => '見出し', 'conditional_logic' => array( array( array( 'field' => 'field_m', 'operator' => '==', 'value' => '02' ) ), array( array( 'field' => 'field_m', 'operator' => '==', 'value' => '01' ) ) ) ) );
+$body   = $p( 'field_mt', 'textarea', array( 'label' => '本文', 'conditional_logic' => array( array( array( 'field' => 'field_m', 'operator' => '==', 'value' => '03' ) ), array( array( 'field' => 'field_m', 'operator' => '==', 'value' => '01' ) ) ) ) );
+$check( '条件：02 なら本文は出ない', ! Conditions::visible( $body, array( 'field_m' => '02' ) ) && Conditions::visible( $catch, array( 'field_m' => '02' ) ) );
+$check( '条件：01 なら両方出る', Conditions::visible( $body, array( 'field_m' => '01' ) ) && Conditions::visible( $catch, array( 'field_m' => '01' ) ) );
+$check( '条件：条件の欄がなければ出す', Conditions::visible( $body, array() ) );
+$check( '条件：!=・==empty・!=empty', Conditions::visible( $p( 'x', 'text', array( 'conditional_logic' => array( array( array( 'field' => 'k', 'operator' => '!=', 'value' => 'a' ) ) ) ) ), array( 'k' => 'b' ) )
+	&& Conditions::visible( $p( 'x', 'text', array( 'conditional_logic' => array( array( array( 'field' => 'k', 'operator' => '==empty', 'value' => '' ) ) ) ) ), array( 'k' => '' ) )
+	&& ! Conditions::visible( $p( 'x', 'text', array( 'conditional_logic' => array( array( array( 'field' => 'k', 'operator' => '!=empty', 'value' => '' ) ) ) ) ), array( 'k' => '' ) ) );
+$fxg = array( array( 'key' => 'group_V', 'title' => '架空', 'fields' => array(
+	$p( 'field_vt', 'text', array( 'label' => '題' ) ),
+	$p( 'field_vx', 'flexible_content', array( 'label' => '本文', 'layouts' => array(
+		array( 'key' => 'l1', 'name' => 'Sub', 'label' => '見出し/本文', 'sub_fields' => array( $mode, $catch, $body ) ),
+		array( 'key' => 'l2', 'name' => 'Pic', 'label' => '写真', 'sub_fields' => array( $p( 'field_pi', 'image', array( 'label' => '画像' ) ), $p( 'field_pc', 'text', array( 'label' => '説明' ) ), $p( 'field_pt', 'text', array( 'label' => 'タイトル' ) ), $p( 'field_pp', 'true_false', array( 'label' => '拡大' ) ) ) ),
+	) ) ),
+) ) );
+$view = PostReader::view( $fxg, array(
+	'field_vt' => ' 題名 ',
+	'field_vx' => array(
+		array( 'acf_fc_layout' => 'Sub', 'field_m' => '02', 'field_mc' => '高圧洗浄', 'field_mt' => '隠れている古い本文' ),
+		array( 'acf_fc_layout' => 'Pic', 'field_pi' => '200', 'field_pc' => '下塗り', 'field_pt' => '', 'field_pp' => '0' ),
+		array( 'acf_fc_layout' => 'Sub', 'field_m' => '03', 'field_mc' => '隠れている見出し', 'field_mt' => "本文の1行目\r\n2行目" ),
+	),
+) );
+$check( '見た目：ラベルで並べる', '題名' === ( $view['題'] ?? '' ) && isset( $view['本文'] ), json_encode( $view, JSON_UNESCAPED_UNICODE ) );
+$check( '見た目：ブロックの名前と選択肢のラベル（値）', '見出し/本文（Sub）' === ( $view['本文'][0]['ブロック'] ?? '' ) && '見出し（02）' === ( $view['本文'][0]['表示形式'] ?? '' ) );
+$check( '見た目：条件で隠れた値は出さない', ! isset( $view['本文'][0]['本文'] ) && ! isset( $view['本文'][2]['見出し'] ) && "本文の1行目\n2行目" === ( $view['本文'][2]['本文'] ?? '' ), json_encode( $view, JSON_UNESCAPED_UNICODE ) );
+$check( '見た目：画像は #ID、空の欄・いいえは出さない', '#200' === ( $view['本文'][1]['画像'] ?? '' ) && '下塗り' === ( $view['本文'][1]['説明'] ?? '' ) && ! isset( $view['本文'][1]['タイトル'] ) && ! isset( $view['本文'][1]['拡大'] ) );
+$v2 = new Validator( $fxg );
+$v2->changes( array( array( 'field_key' => 'field_vx', 'value' => array( array( 'acf_fc_layout' => 'Sub', 'field_m' => '02', 'field_mc' => '高圧洗浄', 'field_mt' => '見えない本文' ) ) ) ) );
+$check( '行の中：表示形式で隠れる欄に書いたら、理由つきで警告', (bool) preg_grep( '/画面に出ない欄に値を入れています（「表示形式」が「見出し」のため.*：本文$/u', $v2->warnings() ), implode( ' / ', $v2->warnings() ) );
+$v3 = new Validator( $fxg );
+$v3->changes( array( array( 'field_key' => 'field_vx', 'value' => array( array( 'acf_fc_layout' => 'Sub', 'field_m' => '01', 'field_mc' => '高圧洗浄', 'field_mt' => '見える本文' ) ) ) ) );
+$check( '行の中：表示される欄は警告しない', ! preg_grep( '/画面に出ない/u', $v3->warnings() ) );
 
 // 必須。
 [ , , , $v ] = $run( array() );
