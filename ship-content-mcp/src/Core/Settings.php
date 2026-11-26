@@ -8,7 +8,7 @@
  * - reject_privileged：一般の編集権限などを持つユーザーを MCP で使わせない（初期は拒否）。
  * - ip_allowlist：接続元の IP/CIDR（空なら制限しない）。REMOTE_ADDR だけを見る。
  * - auth_token：管理画面で発行したトークンでの接続（いちばん簡単。初期は使う）。token_http：トークンを HTTP でも受け付ける（公開前の確認用 URL のため。初期は受け付ける。公開時は MCP ごと外す）。
- * - auth_oauth：ブラウザで許可する接続（OAuth。招待コード）。oauth_invite_days：招待コードの期限（日、初期 7）。oauth_grant_days：許可の期限（日、初期 90）。
+ * - auth_oauth：ブラウザで許可する接続（OAuth。招待コード）。oauth_invite_days：招待コードの期限（日、初期 7）。oauth_grant_days：許可した接続の期限の初期値（日、初期 90。招待コードを発行するときに選び直せる。0.9.17）。
  *   oauth_remote_clients：戻り先が https の AI（Claude の Web 版など、AI の会社のサーバーからつなぐもの）も許す（初期は許さない）。
  * - auth_signature / auth_app_password：使ってよい認証の方法。
  * - structure_strict：入力欄の構造が、管理者が確かめた後に変わったら書き込みを止める（初期は止めずに知らせる。0.9.9）。

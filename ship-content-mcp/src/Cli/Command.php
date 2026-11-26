@@ -290,6 +290,9 @@ final class Command {
 	 * [--days=<n>]
 	 * : invite のとき：招待コードの期限（日。既定は設定の値、初期 7）
 	 *
+	 * [--grant-days=<n>]
+	 * : invite のとき：許可したあとの接続の期限（日。1〜365 か unlimited＝無期限。既定は設定の値、初期 90。画面の選択肢は 7・30・90・180・365・無期限）
+	 *
 	 * [--entry-url=<url>]
 	 * : invite・token・issue のとき：コマンドに入れる入口（既定はこのサイトの入口。https の入口に変えるときに使う。パスは変えない。WP-CLI の --url とは別）
 	 *
@@ -318,12 +321,13 @@ final class Command {
 				\WP_CLI::error( '入口の URL が違います（パスは ' . (string) wp_parse_url( $endpoint, PHP_URL_PATH ) . ' のままにしてください）' );
 			}
 			try {
-				$inv = \ShipContentMcp\Security\OAuth::issue_invite( $user_id, (string) ( $assoc['label'] ?? '' ), get_current_user_id(), isset( $assoc['days'] ) ? (int) $assoc['days'] : null );
+				$inv = \ShipContentMcp\Security\OAuth::issue_invite( $user_id, (string) ( $assoc['label'] ?? '' ), get_current_user_id(), isset( $assoc['days'] ) ? (int) $assoc['days'] : null, isset( $assoc['grant-days'] ) ? ( 'unlimited' === strtolower( (string) $assoc['grant-days'] ) ? \ShipContentMcp\Security\OAuth::GRANT_UNLIMITED : (int) $assoc['grant-days'] ) : null );
 			} catch ( \InvalidArgumentException $e ) {
 				\WP_CLI::error( $e->getMessage() );
 			}
-			AuditLog::write( 'admin', 'ok', '', 'invite issued via cli for user #' . $user_id, array( 'key_id' => $inv['key_id'], 'auth' => 'cli' ) );
+			AuditLog::write( 'admin', 'ok', '', 'invite issued via cli for user #' . $user_id . ' grant ' . $inv['grant_days'] . 'd', array( 'key_id' => $inv['key_id'], 'auth' => 'cli' ) );
 			\WP_CLI::log( 'SHIP_MCP_KEY_ID=' . $inv['key_id'] );
+			\WP_CLI::log( '接続の期限：' . ( \ShipContentMcp\Security\OAuth::GRANT_UNLIMITED === $inv['grant_days'] ? '無期限（止めるまで）' : '許可した日から ' . $inv['grant_days'] . ' 日' ) );
 			\WP_CLI::log( '招待コード（この1回だけ表示。PM はブラウザの「接続の許可」の画面に入れる。AI には貼らない。' . $inv['expires_at'] . ' UTC まで・1回だけ）：' );
 			\WP_CLI::line( $inv['code'] );
 			\WP_CLI::log( '--- AI に貼る文（秘密は入っていない） ---' );
@@ -445,12 +449,13 @@ final class Command {
 				'fingerprint' => 'key' !== \ShipContentMcp\Security\OAuth::kind( $r ) ? '-' : ( null === $raw ? '?' : SignatureCodec::fingerprint( $raw ) ),
 				'client'      => (string) ( $r['client'] ?? '' ),
 				'expires_at'  => (string) ( $r['expires_at'] ?? '' ),
+				'grant_days'  => 'invite' === \ShipContentMcp\Security\OAuth::kind( $r ) ? \ShipContentMcp\Security\OAuth::grant_label( \ShipContentMcp\Security\OAuth::grant_days( (int) ( $r['grant_days'] ?? 0 ) ) ) : '-',
 				'created_at'  => $r['created_at'],
 				'last_used'   => $r['last_used_at'] ?? '',
 				'revoked_at'  => $r['revoked_at'] ?? '',
 			);
 		}
-		\WP_CLI\Utils\format_items( in_array( (string) ( $assoc['format'] ?? 'table' ), array( 'table', 'json', 'csv', 'yaml' ), true ) ? (string) ( $assoc['format'] ?? 'table' ) : 'table', $rows, array( 'key_id', 'type', 'user_id', 'label', 'client', 'fingerprint', 'created_at', 'last_used', 'expires_at', 'revoked_at' ) );
+		\WP_CLI\Utils\format_items( in_array( (string) ( $assoc['format'] ?? 'table' ), array( 'table', 'json', 'csv', 'yaml' ), true ) ? (string) ( $assoc['format'] ?? 'table' ) : 'table', $rows, array( 'key_id', 'type', 'user_id', 'label', 'client', 'fingerprint', 'created_at', 'last_used', 'expires_at', 'grant_days', 'revoked_at' ) );
 	}
 
 	/** --for-user=<ID|new> のユーザー（new なら MCP 用のユーザーを作る）。使えなければ止める。 */
@@ -671,6 +676,9 @@ final class Command {
 			}
 		}
 		$this->check( 'T63 分類の語の名前の比べ方（全角・半角・空白・大文字小文字）', TermService::key( 'ＡＢＣ　市' ) === TermService::key( 'abc市' ) && TermService::key( 'ﾉﾉｲﾁ' ) === TermService::key( 'ノノイチ' ) );
+		global $wpdb;
+		$cols = (array) $wpdb->get_col( 'SHOW COLUMNS FROM ' . \ShipContentMcp\Core\Installer::table( 'keys' ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.NotPrepared
+		$this->check( 'T64 招待コードごとの接続の期限（表の欄・選択肢・基本設定の値）', in_array( 'grant_days', $cols, true ) && \ShipContentMcp\Security\OAuth::grant_days() === max( 1, min( 365, (int) Settings::get()['oauth_grant_days'] ) ) && isset( \ShipContentMcp\Security\OAuth::grant_choices()[ \ShipContentMcp\Security\OAuth::grant_days() ] ) && 30 === \ShipContentMcp\Security\OAuth::grant_days( 30 ) && 365 === \ShipContentMcp\Security\OAuth::grant_days( 999 ), implode( ',', array_keys( \ShipContentMcp\Security\OAuth::grant_choices() ) ) );
 
 		// --- IP ---
 		$this->check( 'T50 IP の判定', IpRules::allowed( '192.0.2.10', array( '192.0.2.0/24' ) ) && ! IpRules::allowed( '198.51.100.1', array( '192.0.2.0/24' ) ) && IpRules::allowed( '2001:db8::1', array( '2001:db8::/32' ) ) && IpRules::allowed( '203.0.113.5', array() ) && ! IpRules::is_valid_entry( '1.2.3.4/33' ) );

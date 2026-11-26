@@ -80,15 +80,63 @@ final class OAuth {
 		return strtotime( $exp . ' UTC' ) <= ( $now ?? time() );
 	}
 
+	/** 接続の期限「無期限」の印（鍵の表の grant_days に入れる値。止めるか、公開の前に片付けるまで使える）。 */
+	public const GRANT_UNLIMITED = 65535;
+
+	/** 接続の期限の選択肢（日 => 表示。招待コードを発行するときに選ぶ。0.9.17）。 */
+	public const GRANT_CHOICES = array(
+		7                     => '1週間',
+		30                    => '1か月（30日）',
+		90                    => '3か月（90日）',
+		180                   => '6か月（180日）',
+		365                   => '1年（365日）',
+		self::GRANT_UNLIMITED => '無期限（止めるまで）',
+	);
+
+	/** 無期限の接続のトークンの期限（秒。止めればその場で使えなくなる）。 */
+	private const UNLIMITED_TOKEN_TTL = 315360000; // 3650 日
+
+	/** 接続の期限の日数（0 や空は基本設定の値。1〜365 日か、無期限の印）。 */
+	public static function grant_days( ?int $days = null ): int {
+		$days = (int) ( $days ?? 0 );
+		if ( self::GRANT_UNLIMITED === $days ) {
+			return self::GRANT_UNLIMITED;
+		}
+		return max( 1, min( 365, $days > 0 ? $days : (int) Settings::get()['oauth_grant_days'] ) );
+	}
+
+	/**
+	 * 発行の画面の選択肢（基本設定の値が選択肢にないときは、それも足す）。
+	 *
+	 * @return array<int,string>
+	 */
+	public static function grant_choices(): array {
+		$out = self::GRANT_CHOICES;
+		$def = self::grant_days();
+		if ( ! isset( $out[ $def ] ) ) {
+			$out[ $def ] = $def . '日';
+			ksort( $out );
+		}
+		return $out;
+	}
+
+	/** 接続の期限の表示（例：3か月（90日）・無期限（止めるまで））。 */
+	public static function grant_label( int $days ): string {
+		return self::GRANT_CHOICES[ $days ] ?? ( $days . '日' );
+	}
+
 	/**
 	 * 招待コードを発行する（コードはここでしか手に入らない）。
 	 *
-	 * @return array{key_id:string,code:string,expires_at:string}
+	 * @param int|null $days       招待コードを使える日数（空は基本設定）
+	 * @param int|null $grant_days 許可したあと接続が使える日数（空は基本設定。0.9.17）
+	 * @return array{key_id:string,code:string,expires_at:string,grant_days:int}
 	 * @throws \InvalidArgumentException 登録できないとき
 	 */
-	public static function issue_invite( int $user_id, string $label, int $by, ?int $days = null ): array {
+	public static function issue_invite( int $user_id, string $label, int $by, ?int $days = null, ?int $grant_days = null ): array {
 		global $wpdb;
 		$days    = max( 1, min( 90, $days ?? (int) Settings::get()['oauth_invite_days'] ) );
+		$grant   = self::grant_days( $grant_days );
 		$code    = self::new_invite_code();
 		$key_id  = 'k' . bin2hex( random_bytes( 8 ) );
 		$expires = gmdate( 'Y-m-d H:i:s', time() + $days * DAY_IN_SECONDS );
@@ -102,8 +150,9 @@ final class OAuth {
 				'created_at' => current_time( 'mysql', true ),
 				'created_by' => $by,
 				'expires_at' => $expires,
+				'grant_days' => $grant,
 			),
-			array( '%s', '%d', '%s', '%s', '%s', '%d', '%s' )
+			array( '%s', '%d', '%s', '%s', '%s', '%d', '%s', '%d' )
 		);
 		if ( ! $ok ) {
 			throw new \InvalidArgumentException( '招待コードを登録できませんでした（表が古い可能性があります。プラグインを一度無効にして有効にし直してください）' );
@@ -112,6 +161,7 @@ final class OAuth {
 			'key_id'     => $key_id,
 			'code'       => $code,
 			'expires_at' => $expires,
+			'grant_days' => $grant,
 		);
 	}
 
@@ -143,18 +193,28 @@ final class OAuth {
 		if ( $user_id <= 0 || ! get_userdata( $user_id ) || '' !== AccessGate::user_problem( $user_id ) ) {
 			return 'user_not_allowed';
 		}
-		$days    = max( 1, min( 365, (int) Settings::get()['oauth_grant_days'] ) );
-		$expires = time() + $days * DAY_IN_SECONDS;
-		$filler  = self::GRANT_MARK . base64_encode( hash( 'sha256', random_bytes( 32 ), true ) );
-		$done    = $wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
-			$wpdb->prepare(
-				"UPDATE {$t} SET public_key = %s, expires_at = %s, client = %s WHERE key_id = %s AND public_key = %s AND revoked_at IS NULL", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-				$filler,
-				gmdate( 'Y-m-d H:i:s', $expires ),
-				mb_substr( (string) ( $client['client_name'] ?? '' ), 0, 100 ),
-				(string) $row['key_id'],
-				$hash
-			)
+		$days      = self::grant_days( (int) ( $row['grant_days'] ?? 0 ) ); // 発行のときに選んだ期間（0.9.16 までの招待コードは基本設定の値）。
+		$unlimited = self::GRANT_UNLIMITED === $days;
+		$expires   = $unlimited ? 0 : time() + $days * DAY_IN_SECONDS; // 無期限は 0（表の expires_at は空）。
+		$filler    = self::GRANT_MARK . base64_encode( hash( 'sha256', random_bytes( 32 ), true ) );
+		$client_nm = mb_substr( (string) ( $client['client_name'] ?? '' ), 0, 100 );
+		$done      = $wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			$unlimited
+				? $wpdb->prepare(
+					"UPDATE {$t} SET public_key = %s, expires_at = NULL, client = %s WHERE key_id = %s AND public_key = %s AND revoked_at IS NULL", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+					$filler,
+					$client_nm,
+					(string) $row['key_id'],
+					$hash
+				)
+				: $wpdb->prepare(
+					"UPDATE {$t} SET public_key = %s, expires_at = %s, client = %s WHERE key_id = %s AND public_key = %s AND revoked_at IS NULL", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+					$filler,
+					gmdate( 'Y-m-d H:i:s', $expires ),
+					$client_nm,
+					(string) $row['key_id'],
+					$hash
+				)
 		);
 		if ( 1 !== (int) $done ) {
 			return 'used';
@@ -375,7 +435,7 @@ final class OAuth {
 		if ( '' !== $why ) {
 			return self::err( 'invalid_grant', 'この接続は使えません（' . $why . '）。管理者から新しい招待コードをもらってください' );
 		}
-		$grant_exp = (int) strtotime( (string) $grant['expires_at'] . ' UTC' );
+		$grant_exp = self::grant_expiry( $grant );
 		$access    = self::ACCESS_PREFIX . self::random_secret();
 		$refresh   = self::REFRESH_PREFIX . self::random_secret();
 		$access_to = $grant_exp; // 接続の期限まで（延長しない AI のため。止めればその場で使えなくなる）。
@@ -429,6 +489,12 @@ final class OAuth {
 		global $wpdb;
 		$t = Installer::table( 'oauth_tokens' );
 		$wpdb->query( $wpdb->prepare( "UPDATE {$t} SET used_at = %d WHERE token_hash = %s AND kind IN ('access','refresh') AND used_at = 0", time(), hash( 'sha256', $token ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery
+	}
+
+	/** トークンの期限に使う、接続の期限（UNIX 秒）。無期限の接続は、いまから 10 年（止めればその場で使えなくなる）。 */
+	public static function grant_expiry( array $grant ): int {
+		$exp = (string) ( $grant['expires_at'] ?? '' );
+		return '' === $exp ? time() + self::UNLIMITED_TOKEN_TTL : (int) strtotime( $exp . ' UTC' );
 	}
 
 	/** 接続（鍵の表の行）が使えない理由（使えるなら ''）。 */

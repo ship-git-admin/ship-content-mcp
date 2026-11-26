@@ -115,7 +115,7 @@ final class HelpPage {
 		}
 		$rows = array(
 			array( 'MCP を受け付ける', (bool) $s['enabled'], $s['enabled'] ? '有効' : '無効（「基本設定」で有効にする）' ),
-			array( 'ブラウザで許可してつなぐ', (bool) $s['auth_oauth'], $s['auth_oauth'] ? '有効（招待コード ' . $s['oauth_invite_days'] . ' 日・許可 ' . $s['oauth_grant_days'] . ' 日）' : '無効（「基本設定」で有効にする）' ),
+			array( 'ブラウザで許可してつなぐ', (bool) $s['auth_oauth'], $s['auth_oauth'] ? '有効（招待コード ' . $s['oauth_invite_days'] . ' 日・接続の期限の初期値 ' . $s['oauth_grant_days'] . ' 日）' : '無効（「基本設定」で有効にする）' ),
 			array( '書き込める投稿タイプ', array() !== $writable, array() !== $writable ? implode( '・', $writable ) : 'まだない（「基本設定」で「試験中」以上にする）' ),
 			array( '制作方針', $policy, $policy ? '書いてある（版 ' . Policies::version() . '）' : 'まだ書いていない（「制作方針」タブ）' ),
 			array( '入口', true, str_starts_with( $endpoint, 'https://' ) ? 'https://（このまま PM に教えられます）' : 'http://（https:// で開けるなら、招待コードを発行するときに入口の URL を https:// に変える）' ),
@@ -143,7 +143,7 @@ final class HelpPage {
 			array(
 				'PM は招待コードを**ブラウザの画面にだけ**入れます。秘密が AI の会話に入らない（AI の会社のサーバーを通らない）ので、トークンを貼る方式より安全です。',
 				'Windows でも Mac でも同じ手順です。PM がコマンドを打つ必要は、ほとんどありません。',
-				'招待コードは1回だけ・{invite_days} 日以内に使えます。許可した接続は {grant_days} 日で切れ、一覧から1台ずつ止められます。',
+				'招待コードは1回だけ・{invite_days} 日以内に使えます。許可した接続の期限は発行するときに選べ（1週間〜1年・無期限。初期 {grant_days} 日）、一覧から1台ずつ止められます。',
 			)
 		);
 		self::box( '大事なこと', array( 'この仕組みは、**公開前（制作中）のサイトで使う前提**です。サイトを公開するときは、必ずプラグインごと外します（8.）。' ), 'warn' );
@@ -156,7 +156,7 @@ final class HelpPage {
 			array(
 				array( 'MCP を受け付ける', '有効' ),
 				array( 'ブラウザで許可してつなぐ（OAuth）', '有効（初期で有効）' ),
-				array( '招待コード・許可の期限', '初期は 7日・90日。変えてもよい' ),
+				array( '招待コード・接続の期限', '初期は 7日・90日。接続の期限は、招待コードを発行するときにも選べる' ),
 				array( 'Web 版の AI からの接続も許す', 'ふつうはオフ（Claude の Web 版などを使うときだけオン）' ),
 				array( '使う投稿タイプ', '「試験合格」か「稼働」' ),
 				array( '制作方針', '書いてある（AI はつないで最初に受け取り、途中で変わったら保存の前に読み直します）' ),
@@ -181,6 +181,7 @@ final class HelpPage {
 			array(
 				array( 'ユーザー', 'そのままでよい（最初は「MCP 用のユーザーを新しく作る」、2回目からは作った MCP 用のユーザーが選ばれています）。この接続で作った下書きは、このユーザーが作ったものになります' ),
 				array( 'PM の名前', 'あとで見分けるための名前（例：PM 山田（MacBook））' ),
+				array( '接続の期限', 'PM が「許可する」を押した日から、つながる期間（1週間・1か月・3か月・6か月・1年・無期限）。最初は基本設定の値（{grant_days} 日）が選ばれています。短い試しなら短く、担当の PM なら長くする。無期限は、一覧で「止める」を押すか、公開の前に片付けるまで使えます' ),
 				array( '入口の URL', 'https:// の入口があれば https:// に変える（`{entry}`）。「/wp-json/…」は変えない。AI に登録する名前（ship-…）は、この URL のドメインから決まります' ),
 			)
 		);
@@ -214,7 +215,7 @@ final class HelpPage {
 				array( '招待コードを間違った相手に送った', 'その招待コードを止めて、新しく発行して送り直す' ),
 				array( 'PM が担当を外れた・パソコンをなくした', 'その PM の接続を止める' ),
 				array( 'PM がパソコンを替えた', '新しいパソコン用に招待コードを発行する（古い接続は止める）' ),
-				array( '許可の期限が切れた（{grant_days} 日）', '新しい招待コードを発行して送る' ),
+				array( '接続の期限が切れた（発行のときに選んだ期間）', '新しい招待コードを発行して送る' ),
 				array( '招待コードの期限が切れた（{invite_days} 日）', '新しく発行して送り直す' ),
 			)
 		);
@@ -257,7 +258,7 @@ final class HelpPage {
 		);
 
 		self::h( '10', '参考：WP-CLI・記録・トークン' );
-		self::pre( "wp ship-content-mcp keys invite --for-user=new --label='PM 山田（MacBook）' --entry-url={entry}\nwp ship-content-mcp keys list\nwp ship-content-mcp keys revoke --key-id=<鍵 ID>\nwp ship-content-mcp prelaunch --yes\nwp ship-content-mcp status" );
+		self::pre( "wp ship-content-mcp keys invite --for-user=new --label='PM 山田（MacBook）' --grant-days=90 --entry-url={entry}\nwp ship-content-mcp keys list\nwp ship-content-mcp keys revoke --key-id=<鍵 ID>\nwp ship-content-mcp prelaunch --yes\nwp ship-content-mcp status" );
 		self::ul(
 			array(
 				'「記録」タブに、AI の登録・許可・トークンの発行・認証の失敗・ツールの実行・管理の操作が残ります。招待コードやトークンの中身は残りません。',
@@ -322,7 +323,7 @@ final class HelpPage {
 		self::box( 'この画面で許可してよいのは', array( '**自分で AI に「つないで」と頼んで、開いた画面のときだけ**です。人から送られてきたリンクで開いた画面では、許可しないでください（その人の AI がつながってしまいます）。' ), 'warn' );
 
 		self::h( '5', 'つながったか確かめる' );
-		self::p( 'AI に「使える投稿タイプを教えて」と聞きます。投稿タイプが返ってくれば、使えます。ツールが見つからないと言われたら、新しい会話にしてから聞き直します。2回目からは、何もしなくてもつながります。許可は {grant_days} 日で切れます。切れたら、管理者に新しい招待コードをもらって 4. をやり直します。' );
+		self::p( 'AI に「使える投稿タイプを教えて」と聞きます。投稿タイプが返ってくれば、使えます。ツールが見つからないと言われたら、新しい会話にしてから聞き直します。2回目からは、何もしなくてもつながります。許可の期限は、管理者が招待コードごとに決めています（ふつうは {grant_days} 日。無期限のこともあります）。切れたら、管理者に新しい招待コードをもらって 4. をやり直します。' );
 		self::fig( 'pm_ai_check', 'つながったか確かめる', true );
 
 		self::h( '6', '使い方' );

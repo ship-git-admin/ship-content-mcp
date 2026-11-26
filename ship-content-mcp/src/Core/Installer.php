@@ -66,6 +66,7 @@ final class Installer {
   revoked_by bigint(20) unsigned NOT NULL DEFAULT 0,
   expires_at datetime NULL DEFAULT NULL,
   client varchar(100) NOT NULL DEFAULT '',
+  grant_days smallint(5) unsigned NOT NULL DEFAULT 0,
   PRIMARY KEY  (id),
   UNIQUE KEY key_id (key_id),
   UNIQUE KEY public_key (public_key),

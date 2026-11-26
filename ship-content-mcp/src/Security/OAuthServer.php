@@ -263,7 +263,7 @@ final class OAuthServer {
 			'oauth',
 			'ok',
 			'',
-			'authorized: ' . $client['client_name'] . ' until ' . gmdate( 'Y-m-d', $r['expires'] ),
+			'authorized: ' . $client['client_name'] . ' until ' . ( $r['expires'] > 0 ? gmdate( 'Y-m-d', $r['expires'] ) : 'unlimited' ),
 			self::ctx(
 				array(
 					'key_id'  => $r['key_id'],
@@ -417,11 +417,10 @@ final class OAuthServer {
 		foreach ( $p as $k => $v ) {
 			$hidden .= '<input type="hidden" name="' . esc_attr( $k ) . '" value="' . esc_attr( $v ) . '">';
 		}
-		$days = (int) Settings::get()['oauth_grant_days'];
 		$body = '<h1>AI からの接続を許可しますか？</h1>'
 			. '<dl><dt>つなごうとしている AI</dt><dd>' . esc_html( $client['client_name'] ) . ' <span class="note">（AI が名乗った名前）</span></dd>'
 			. '<dt>許可したあとの戻り先</dt><dd>' . esc_html( $where ) . '</dd>'
-			. '<dt>できること</dt><dd>このサイトの下書きの作成・修正（公開・削除はできません）。許可から ' . esc_html( (string) $days ) . ' 日間。</dd></dl>'
+			. '<dt>できること</dt><dd>このサイトの下書きの作成・修正（公開・削除はできません）。期限は、管理者が招待コードごとに決めた期間です。</dd></dl>'
 			. '<div class="warn"><strong>自分の AI に「つないで」と頼んで、この画面が開いたときだけ</strong>許可してください。人から送られてきたリンクで開いた場合は、許可しないでください。</div>'
 			. ( '' !== $error ? '<div class="err" role="alert">' . esc_html( $error ) . '</div>' : '' )
 			. '<form method="post" autocomplete="off">' . $hidden

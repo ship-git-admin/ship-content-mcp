@@ -122,7 +122,7 @@ final class SettingsPage {
 		echo '</tbody></table><p class="description">最初は works だけを使います。「未検証」は読み取りだけ。「試験中」で下書きの保存を試し（作った下書きに試験の印が付き、WP-CLI の cleanup-tests で片付けられます）、実機の試験に合格したら「試験合格」にしてください。「試験合格」「稼働」にしたときの入力欄（ACF）の構造を記録し、その後に構造が変わったら、AI と「診断」に知らせます（「入力欄が変わったら書き込みを止める」を入にしたときは、確かめ直すまで止めます）。</p></td></tr>';
 		self::checkbox_row( 'reject_privileged', '権限の強いユーザーを拒否する', $s['reject_privileged'], '投稿の編集・公開・アップロード・設定変更などの権限を持つユーザーは、MCP で使えません（推奨）。PM には「' . Consts::ROLE_LABEL . '」のユーザーを使ってください。' );
 		self::checkbox_row( 'auth_oauth', 'ブラウザで許可してつなぐ（OAuth）', $s['auth_oauth'], '「接続」タブで発行した招待コードを、PM がブラウザの「接続の許可」の画面に入れて許可します。秘密が AI の会話に入りません（おすすめ）。' );
-		echo '<tr><th scope="row">招待コード・許可の期限</th><td>招待コードは <input type="number" name="oauth_invite_days" min="1" max="90" value="' . esc_attr( (string) $s['oauth_invite_days'] ) . '" class="small-text"> 日以内に1回だけ使える。許可した接続は <input type="number" name="oauth_grant_days" min="1" max="365" value="' . esc_attr( (string) $s['oauth_grant_days'] ) . '" class="small-text"> 日で切れる（切れたら、新しい招待コードで許可し直す）。</td></tr>';
+		echo '<tr><th scope="row">招待コード・接続の期限</th><td>招待コードは <input type="number" name="oauth_invite_days" min="1" max="90" value="' . esc_attr( (string) $s['oauth_invite_days'] ) . '" class="small-text"> 日以内に1回だけ使える。許可した接続の期限は、初期 <input type="number" name="oauth_grant_days" min="1" max="365" value="' . esc_attr( (string) $s['oauth_grant_days'] ) . '" class="small-text"> 日（招待コードを発行するときに選び直せる。切れたら、新しい招待コードで許可し直す）。</td></tr>';
 		self::checkbox_row( 'oauth_remote_clients', 'Web 版の AI からの接続も許す', $s['oauth_remote_clients'], 'Claude の Web 版・デスクトップのコネクタなど、AI の会社のサーバーからつなぐものです。オフの間は、PM のパソコンの中で動く AI（Claude Code・Codex など）だけがつなげます。オンにすると、人から送られた許可のリンクで招待コードを入れてしまったときに、その人の AI がつながるおそれが増えます。' );
 		self::checkbox_row( 'auth_token', 'トークンで認証する', $s['auth_token'], '「接続」タブで発行したトークンを、Claude Code・Codex などの MCP の設定に入れるだけでつながります（いちばん簡単）。' );
 		self::checkbox_row( 'token_http', 'トークンを HTTP でも受け付ける', $s['token_http'], '公開前の確認用 URL（HTTP）で使うためです。HTTP ではトークンが暗号化されずに流れるので、公開するときはこのプラグインごと外してください（「接続」タブの「公開の前に片付ける」）。' );
@@ -201,9 +201,9 @@ final class SettingsPage {
 			if ( ! empty( $row['revoked_at'] ) ) {
 				$state = '止めた（' . self::local_time( (string) $row['revoked_at'] ) . '）';
 			} elseif ( 'invite' === $kind ) {
-				$state = $expired ? '期限切れ（使われなかった）' : '未使用（' . $until . ' まで）';
+				$state = $expired ? '期限切れ（使われなかった）' : '未使用（' . $until . ' まで。許可したら ' . OAuth::grant_label( OAuth::grant_days( (int) ( $row['grant_days'] ?? 0 ) ) ) . '）';
 			} elseif ( 'oauth' === $kind ) {
-				$state = $expired ? '期限切れ（' . $until . '）' : '有効（' . $until . ' まで）';
+				$state = $expired ? '期限切れ（' . $until . '）' : ( '' === $until ? '有効（無期限。止めるまで）' : '有効（' . $until . ' まで）' );
 			} else {
 				$state = '有効';
 			}
@@ -321,7 +321,7 @@ final class SettingsPage {
 	private static function invite_section( array $users, string $endpoint ): void {
 		$s = Settings::get();
 		echo '<h2>招待コードを発行する（ブラウザで許可する接続・おすすめ）</h2>';
-		echo '<p>PM は「AI に貼る文」を自分の AI（Claude Code・Codex など）に貼るだけです。AI がブラウザを開くので、PM はその「接続の許可」の画面に招待コードを入れて「許可する」を押します。秘密は AI の会話に入りません。招待コードは ' . esc_html( (string) $s['oauth_invite_days'] ) . ' 日以内に1回だけ使えます。許可した接続は ' . esc_html( (string) $s['oauth_grant_days'] ) . ' 日で切れます（「基本設定」で変えられます）。PM 1人のパソコン1台ごとに1つ発行してください。取説は<a href="' . esc_url( admin_url( 'options-general.php?page=' . self::SLUG . '&tab=help' ) ) . '">「使い方（管理者向け）」</a>と<a href="' . esc_url( admin_url( 'options-general.php?page=' . self::SLUG . '&tab=help_pm' ) ) . '">「使い方（PM 向け）」</a>のタブにあります（PM 向けは印刷・PDF にして PM に渡せます）。</p>';
+		echo '<p>PM は「AI に貼る文」を自分の AI（Claude Code・Codex など）に貼るだけです。AI がブラウザを開くので、PM はその「接続の許可」の画面に招待コードを入れて「許可する」を押します。秘密は AI の会話に入りません。招待コードは ' . esc_html( (string) $s['oauth_invite_days'] ) . ' 日以内に1回だけ使えます。許可した接続の期限は、下の「接続の期限」で選びます（初期 ' . esc_html( OAuth::grant_label( OAuth::grant_days() ) ) . '。初期値は「基本設定」で変えられます）。PM 1人のパソコン1台ごとに1つ発行してください。取説は<a href="' . esc_url( admin_url( 'options-general.php?page=' . self::SLUG . '&tab=help' ) ) . '">「使い方（管理者向け）」</a>と<a href="' . esc_url( admin_url( 'options-general.php?page=' . self::SLUG . '&tab=help_pm' ) ) . '">「使い方（PM 向け）」</a>のタブにあります（PM 向けは印刷・PDF にして PM に渡せます）。</p>';
 		if ( ! $s['auth_oauth'] ) {
 			echo '<div class="notice notice-warning inline"><p>「基本設定」で「ブラウザで許可してつなぐ（OAuth）」が止まっています。</p></div>';
 		}
@@ -334,8 +334,10 @@ final class SettingsPage {
 			$who        = isset( $_POST['user_id'] ) ? sanitize_key( wp_unslash( $_POST['user_id'] ) ) : '';
 			$label      = isset( $_POST['label'] ) ? sanitize_text_field( wp_unslash( $_POST['label'] ) ) : '';
 			$url        = isset( $_POST['url'] ) ? esc_url_raw( wp_unslash( $_POST['url'] ), array( 'http', 'https' ) ) : '';
+			$grant      = isset( $_POST['grant_days'] ) ? absint( wp_unslash( $_POST['grant_days'] ) ) : 0;
 			// phpcs:enable
-			$once = 'ship_content_mcp_issued_' . md5( 'invite' . $once_token );
+			$grant = isset( OAuth::grant_choices()[ $grant ] ) ? $grant : OAuth::grant_days();
+			$once  = 'ship_content_mcp_issued_' . md5( 'invite' . $once_token );
 			$norm = ConnectionCode::normalize_url( '' === trim( $url ) ? $endpoint : $url, $endpoint );
 			if ( '' === $once_token || false !== get_transient( $once ) ) {
 				$error = 'このフォームからは発行済みです（再読み込みでは発行しません）。もう一度発行するときは、「接続」タブを開き直してください。';
@@ -348,8 +350,8 @@ final class SettingsPage {
 					if ( '' !== AccessGate::user_problem( $user_id ) ) {
 						throw new \InvalidArgumentException( 'このユーザーは MCP を使えません（専用の権限がない、または権限が強すぎます）' );
 					}
-					$issued = OAuth::issue_invite( $user_id, $label, get_current_user_id() );
-					AuditLog::write( 'admin', 'ok', '', 'invite issued for user #' . $user_id, array( 'key_id' => $issued['key_id'] ) );
+					$issued = OAuth::issue_invite( $user_id, $label, get_current_user_id(), null, $grant );
+					AuditLog::write( 'admin', 'ok', '', 'invite issued for user #' . $user_id . ' grant ' . $issued['grant_days'] . 'd', array( 'key_id' => $issued['key_id'] ) );
 					$result = $issued + array(
 						'url'  => $norm,
 						'name' => 'ship-' . ConnectionCode::default_name( $norm ),
@@ -367,6 +369,7 @@ final class SettingsPage {
 			echo '<p><strong>発行しました（鍵 ID ' . esc_html( $result['key_id'] ) . '）。この画面を閉じると、招待コードは二度と表示されません。</strong>下の2つを PM に送ってください。</p>';
 			self::copy_box( 'scm-i-prompt', '① AI に貼る文：PM は自分の AI にそのまま貼ります（秘密は入っていません）', OAuth::pm_prompt( $result['name'], $result['url'] ), 13 );
 			self::copy_box( 'scm-i-code', '② 招待コード：PM はブラウザの「接続の許可」の画面に入れます（AI には貼りません）。' . self::local_time( $result['expires_at'] ) . ' まで・1回だけ', $result['code'], 1 );
+			echo '<p><strong>接続の期限：</strong>' . ( OAuth::GRANT_UNLIMITED === (int) $result['grant_days'] ? '無期限（一覧で「止める」を押すか、公開の前に片付けるまで使えます）。' : 'PM が許可した日から ' . esc_html( OAuth::grant_label( (int) $result['grant_days'] ) ) . '。切れたら、新しい招待コードを発行して送ります。' ) . '</p>';
 			echo '<p class="description" style="margin-top:12px">サーバーの Basic 認証があるサイトでは、許可の画面を開いたときにブラウザが Basic 認証の ID とパスワードを聞きます（PM がサイトの確認に使っているもの）。AI が自動で呼ぶ道は、サーバーの設定で Basic 認証の例外にしておきます（管理者向けの手順書を参照）。</p>';
 			echo '</div>';
 		}
@@ -376,6 +379,11 @@ final class SettingsPage {
 		echo '<table class="form-table" role="presentation">';
 		echo '<tr><th><label for="scm-invite-user">ユーザー</label></th><td>' . self::user_select( 'scm-invite-user', 'user_id', $users, true ) . '<p class="description">この接続で作った下書きは、このユーザーが作ったものになります。ふつうは「MCP 用のユーザー」1人で足ります。</p></td></tr>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- user_select でエスケープ済み
 		echo '<tr><th><label for="scm-invite-label">PM の名前</label></th><td><input id="scm-invite-label" name="label" class="regular-text" maxlength="100" placeholder="例：PM 山田（MacBook）"><p class="description">あとで「止める」ときに見分けるための名前です。</p></td></tr>';
+		echo '<tr><th><label for="scm-invite-grant">接続の期限</label></th><td><select id="scm-invite-grant" name="grant_days">';
+		foreach ( OAuth::grant_choices() as $d => $text ) {
+			echo '<option value="' . esc_attr( (string) $d ) . '"' . selected( $d, OAuth::grant_days(), false ) . '>' . esc_html( $text ) . '</option>';
+		}
+		echo '</select><p class="description">PM が「許可する」を押した日から、この期間つながります。切れたら、新しい招待コードで許可し直します（短い試しなら短く、担当の PM なら長くします）。「無期限」は、一覧で「止める」を押すか、公開の前に片付けるまで使えます。</p></td></tr>';
 		echo '<tr><th><label for="scm-invite-url">入口の URL</label></th><td><input id="scm-invite-url" name="url" class="large-text code" value="' . esc_attr( $endpoint ) . '"><p class="description">AI に教える入口です。https:// の入口があれば https:// にしてください（AI によっては、http:// ではブラウザで許可する接続を使えません）。「/wp-json/…」の部分は変えないでください。</p></td></tr>';
 		echo '</table>';
 		submit_button( '招待コードを発行する', 'primary', 'submit', true );
