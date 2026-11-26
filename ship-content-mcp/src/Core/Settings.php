@@ -12,7 +12,7 @@
  *   oauth_remote_clients：戻り先が https の AI（Claude の Web 版など、AI の会社のサーバーからつなぐもの）も許す（初期は許さない）。
  * - auth_signature / auth_app_password：使ってよい認証の方法。
  * - structure_strict：入力欄の構造が、管理者が確かめた後に変わったら書き込みを止める（初期は止めずに知らせる。0.9.9）。
- * - allow_add_terms：記事に合う分類の語がないとき、AI が add-term で語を足せる（初期は入。親の下にだけ。0.9.13）。
+ * - allow_add_terms：記事に合う分類の語がないとき、AI が add-term で語を足せる（初期は入。見出しの親も。0.9.13・0.9.14）。
  * - media_max_mb：写真1枚の上限（MB、1〜100）。strip_metadata：写真の位置情報などのメタデータを消す（初期は消す）。
  *
  * @package ShipContentMcp

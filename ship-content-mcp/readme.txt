@@ -3,7 +3,7 @@ Contributors: shipinc
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.9.13
+Stable tag: 0.9.14
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -17,6 +17,9 @@ WordPress 側では AI を呼びません。公開・予約・削除・ACF の�
 読み取り（投稿タイプ・制作方針・入力欄の構造・記事）、下書きの検証・作成・修正、分類の語の追加、写真の登録（アップロード用 URL・分割転送・URL からの取り込み）のツールがあります。
 
 == Changelog ==
+
+= 0.9.14 =
+* 分類の語を足す add-term の、親と数の制限を外した（見出しになる親の語も足せる。24時間の上限はなし）。
 
 = 0.9.13 =
 * 記事に合う分類の語がないとき、AI が語を足せるツール（add-term）を足した。親の下にだけ足し、同じ語は作らず、似た語があれば候補を返す。基本設定の「AI が分類の語を足せる」で止められる。

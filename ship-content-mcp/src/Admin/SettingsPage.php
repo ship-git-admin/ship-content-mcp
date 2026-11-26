@@ -128,7 +128,7 @@ final class SettingsPage {
 		self::checkbox_row( 'auth_app_password', 'Application Password で認証する', $s['auth_app_password'], 'HTTPS のサイトだけで使えます（WordPress の決まり）。' );
 		echo '<tr><th scope="row"><label for="scm-max">写真の上限</label></th><td><input id="scm-max" type="number" name="media_max_mb" min="1" max="100" value="' . esc_attr( (string) $s['media_max_mb'] ) . '" class="small-text"> MB<p class="description">写真は JPEG・PNG・WebP だけ受け付けます（URL からの取得はしません）。</p></td></tr>';
 		self::checkbox_row( 'structure_strict', '入力欄が変わったら書き込みを止める', $s['structure_strict'], '「試験合格」「稼働」の投稿タイプで、ACF の入力欄の構造が、確かめた後に変わったら、確かめ直すまで AI の書き込みを止めます。切（初期）なら止めずに、AI と「診断」に知らせます（AI は保存のたびに今の構造で確かめるので、形の合わない値は入りません）。' );
-		self::checkbox_row( 'allow_add_terms', 'AI が分類の語を足せる', $s['allow_add_terms'], '記事に合う分類の語（エリアの地名など）がないとき、AI が語を足せます。親子のある分類では親の下にだけ足し（一番上の見出しは足しません）、同じ語は作らず、似た語があれば AI が PM に確かめます。公開されない分類（システムタグなど）には足しません。24時間に ' . \ShipContentMcp\Content\TermService::DAILY_MAX . ' 件まで。テーマによっては、記事が公開される前でもサイトの絞り込みに出ます。' );
+		self::checkbox_row( 'allow_add_terms', 'AI が分類の語を足せる', $s['allow_add_terms'], '記事に合う分類の語（エリアの地名など）がないとき、AI が語を足せます（見出しになる親の語も）。同じ語は作らず、似た語があれば AI が PM に確かめます。公開されない分類（システムタグなど）には足しません。テーマによっては、記事が公開される前でもサイトの絞り込みに出ます（親の語は特に）。' );
 		self::added_terms_row();
 		self::checkbox_row( 'strip_metadata', '写真の位置情報などを消す', $s['strip_metadata'], '撮影場所（GPS）・カメラの情報などのメタデータを、登録の前に消します（向きは写真に反映してから消します）。お客様の住所が分かってしまうのを防ぐため、有効のままにしてください。' );
 		echo '<tr><th scope="row">メディアの公開範囲</th><td><p class="description" style="color:#b32d2e">' . esc_html( \ShipContentMcp\Media\UploadService::PUBLIC_NOTICE ) . '</p></td></tr>';

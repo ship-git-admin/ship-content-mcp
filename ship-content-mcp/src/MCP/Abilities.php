@@ -49,7 +49,7 @@ final class Abilities {
 	/** 最初に呼ぶ list-post-types の返事に付ける、全部の手順（AI がツールを探さなくても、写真まで進めるように。0.9.5）。 */
 	public const STEPS = array(
 		'1. この返事の data.creation_policy（サイト管理者の制作方針）を読む。記事の書き方・文字数・写真の並べ方は、これに従う（迷ったら PM に確認）。次に get-acf-schema で入力欄を読む（参考にする記事は search-posts・get-post）。',
-		'2. 分類（カテゴリなど）を決める。post_types[].taxonomies[].terms の語（id）から、制作方針と記事の中身に合うものを選び、create-draft の taxonomies（kind=taxonomy_terms）に入れる。公開されない分類（public=false）は、制作方針に書いてなければ付けない。合う語がなければ、その分類の can_add_terms が true なら add-term で足す（parent は add_under の id。同じ語はそのまま返り、似た語があれば TERM-002 で候補が返るので、それを使うか PM に確かめる）。足した語は PM への報告に書く。can_add_terms が false なら PM に聞く。',
+		'2. 分類（カテゴリなど）を決める。post_types[].taxonomies[].terms の語（id）から、制作方針と記事の中身に合うものを選び、create-draft の taxonomies（kind=taxonomy_terms）に入れる。公開されない分類（public=false）は、制作方針に書いてなければ付けない。合う語がなければ、その分類の can_add_terms が true なら add-term で足す（親子のある分類は parent に親の語の id、一番上なら 0。同じ語はそのまま返り、似た語があれば TERM-002 で候補が返るので、それを使うか PM に確かめる）。足した語は PM への報告に書く。can_add_terms が false なら PM に聞く。',
 		'3. 写真・画像があれば、1枚ずつメディアに登録する。誰でも開ける写真の URL があれば import-image-url。手元のファイルは get-upload-url（返ってきた curl を実行）。コマンドでネットワークにつなげないときは prepare-upload → upload-chunk → finish-upload（返事の how_to_send のコマンドの出力をそのまま渡す。base64 を自分で書き写さない）。返った attachment_id を、画像の欄や featured_media に入れる。うまくいかないときは、この返事の meta.photos（写真の出どころ別の手順・取り込めないとき）に従う。',
 		'4. validate-draft で確かめ、制作方針に合っているかも自分で確かめて、PM に見せてから、create-draft（新しい下書き）か update-draft（下書きを直す）で保存する。保存には policy_version（creation_policy.version）を付ける。方針が変わっていると保存されない（POLICY-002）ので、get-creation-policy で読み直し、方針に合わせてから送り直す。',
 		'5. 保存した後は get-post で読み戻す。',
@@ -435,7 +435,7 @@ final class Abilities {
 		self::add(
 			self::ADD_TERM,
 			'分類の語を足す',
-			'Add a category / taxonomy term（分類の語を足す。エリアの地名など）。記事に合う語が list-post-types の terms にないときだけ使う（先に terms から探す。can_add_terms が true の分類だけ）。親子のある分類では、親（parent に add_under の id）の下に足す（一番上の見出しの語は足せない）。同じ親の下に同じ名前があれば、作らずにそれを返す。似た語があると TERM-002 で候補（similar_terms）が返るので、合う語を使うか、PM に確かめてから new_anyway=true で送り直す。slug はほかの語に合わせて英小文字・数字・ハイフン（地名はローマ字。例：chuo）。返った term.id を create-draft の taxonomies か update-draft の changes（kind=taxonomy_terms）の term_ids に入れる。足した語は PM への報告に書く。' . self::UNTRUSTED,
+			'Add a category / taxonomy term（分類の語を足す。エリアの地名など）。記事に合う語が list-post-types の terms にないときだけ使う（先に terms から探す。can_add_terms が true の分類だけ）。親子のある分類では、parent に親の語の id を入れる（一番上の見出しとして足すときは 0）。同じ親の下に同じ名前があれば、作らずにそれを返す。似た語があると TERM-002 で候補（similar_terms）が返るので、合う語を使うか、PM に確かめてから new_anyway=true で送り直す。slug はほかの語に合わせて英小文字・数字・ハイフン（地名はローマ字。例：chuo）。返った term.id を create-draft の taxonomies か update-draft の changes（kind=taxonomy_terms）の term_ids に入れる。足した語は PM への報告に書く。' . self::UNTRUSTED,
 			array(
 				'type'                 => 'object',
 				'properties'           => array(
@@ -450,7 +450,7 @@ final class Abilities {
 					'parent'     => array(
 						'type'        => 'integer',
 						'minimum'     => 0,
-						'description' => '親の語の id（list-post-types の taxonomies の add_under のどれか）。親子のない分類は 0 か省く。',
+						'description' => '親の語の id（list-post-types の terms の id）。一番上に足すとき・親子のない分類は 0 か省く。',
 					),
 					'slug'       => array(
 						'type'        => 'string',

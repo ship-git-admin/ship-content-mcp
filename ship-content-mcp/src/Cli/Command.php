@@ -666,8 +666,8 @@ final class Command {
 				$this->check( 'T61 構造の記録が安定：' . $pt, array() !== $a && StructureLock::current( $pt ) === $a, count( $a ) . ' groups' );
 			}
 			foreach ( PostTypes::taxonomies_with_terms( $pt ) as $tx ) {
-				$ok = empty( $tx['can_add_terms'] ) || ( array() !== ( $tx['add_under'] ?? array() ) && ( ! $tx['hierarchical'] || array( 0 ) === $tx['add_under'] || ! in_array( 0, $tx['add_under'], true ) ) );
-				$this->check( 'T62 分類の語を足せる親が決まる：' . $pt . '/' . $tx['name'], $ok, ! empty( $tx['can_add_terms'] ) ? 'add_under=' . implode( ',', $tx['add_under'] ) : '足せない（' . ( $tx['public'] ? '設定・状態' : '公開されない分類' ) . '）' );
+				$ok = $tx['public'] || empty( $tx['can_add_terms'] );
+				$this->check( 'T62 公開されない分類には、分類の語を足せない：' . $pt . '/' . $tx['name'], $ok, ! empty( $tx['can_add_terms'] ) ? '足せる' : '足せない（' . ( $tx['public'] ? '設定・状態' : '公開されない分類' ) . '）' );
 			}
 		}
 		$this->check( 'T63 分類の語の名前の比べ方（全角・半角・空白・大文字小文字）', TermService::key( 'ＡＢＣ　市' ) === TermService::key( 'abc市' ) && TermService::key( 'ﾉﾉｲﾁ' ) === TermService::key( 'ノノイチ' ) );

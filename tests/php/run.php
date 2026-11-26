@@ -228,8 +228,7 @@ $works = array(
 	array( 'id' => 21, 'name' => 'エリアから選ぶ', 'parent' => 0 ),
 	array( 'id' => 22, 'name' => '架空市', 'parent' => 21 ),
 );
-$check( '分類の語：親子のある分類は、見出しの下にだけ足せる（一番上は不可）', array( 20, 21 ) === $TS::allowed_parents( $works, true ) && array( 0 ) === $TS::allowed_parents( array( array( 'id' => 1, 'name' => 'お知らせ', 'parent' => 0 ) ), true ) && array( 0 ) === $TS::allowed_parents( array(), true ) && array( 0 ) === $TS::allowed_parents( $works, false ) );
-$check( '分類の語：深さ（親の輪があっても止まる）', array( 1 => 2, 2 => 2 ) === $TS::depths( array( array( 'id' => 1, 'name' => 'a', 'parent' => 2 ), array( 'id' => 2, 'name' => 'b', 'parent' => 1 ) ) ) && 2 === $TS::depths( $works )[22] );
+$check( '分類の語：親は、一番上（0）かその分類の語。親子のない分類は一番上だけ（0.9.14）', $TS::valid_parent( $works, true, 0 ) && $TS::valid_parent( $works, true, 21 ) && $TS::valid_parent( $works, true, 22 ) && ! $TS::valid_parent( $works, true, 999 ) && $TS::valid_parent( $works, false, 0 ) && ! $TS::valid_parent( $works, false, 21 ) );
 $f1 = $TS::find_similar( $works, '架空市', 21 );
 $f2 = $TS::find_similar( $works, '架空', 21 );
 $f3 = $TS::find_similar( $works, '見本町', 21 );

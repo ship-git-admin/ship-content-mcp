@@ -4,11 +4,10 @@
  *
  * - 管理者が基本設定の「AI が分類の語を足せる」（allow_add_terms、初期は入）を切にしたら足さない（TERM-001）。
  * - 書き込める投稿タイプの、公開される分類だけ（システムタグなど public=false の分類には足さない）。
- * - 親子のある分類では、今ある深さまでの、親の下にだけ足す（一番上の見出しの語は足さない）。親子のない分類は一番上に足す。
+ * - 親子のある分類では、親（その分類の語）の下にも、一番上（見出し）にも足せる。親子のない分類は一番上に足す（0.9.14 で、親と数の制限を外した）。
  * - 同じ親の下に同じ名前（全角・半角・大文字小文字・空白の違いは同じとみなす）があれば、作らずにそれを返す。
  * - 似た名前（片方がもう片方を含む・別の親の下に同じ名前）があれば、作らずに候補を返す（TERM-002）。
  *   PM に確かめてから new_anyway=true で足せる。
- * - 24時間に足せるのは DAILY_MAX 件まで（TERM-003）。
  * - 足した語には印（いつ・誰が）を付ける。試験中の投稿タイプなら試験の印も付け、cleanup-tests で片付ける（記事が付いていないものだけ）。
  * - WordPress の権限（manage_categories）は見ない。足してよいかは管理者の設定で決める（MCP のユーザーは権限の弱いユーザーのため）。
  *
@@ -32,9 +31,6 @@ final class TermService {
 
 	/** 試験の印（DraftService::META_TEST と同じ名前）。 */
 	public const META_TEST = '_ship_content_mcp_test';
-
-	/** 24時間に足せる語の数。 */
-	public const DAILY_MAX = 20;
 
 	/** 語の名前の長さの上限。 */
 	public const NAME_MAX = 40;
@@ -74,54 +70,15 @@ final class TermService {
 	}
 
 	/**
-	 * 語ごとの深さ（一番上が 1）。
+	 * 親として使えるか：一番上（0）か、その分類の語。親子のない分類は一番上だけ。
 	 *
 	 * @param list<array{id:int,name:string,parent:int}> $terms
-	 * @return array<int,int>
 	 */
-	public static function depths( array $terms ): array {
-		$parent = array();
-		foreach ( $terms as $t ) {
-			$parent[ (int) $t['id'] ] = (int) $t['parent'];
+	public static function valid_parent( array $terms, bool $hierarchical, int $parent ): bool {
+		if ( 0 === $parent ) {
+			return true;
 		}
-		$out = array();
-		foreach ( $parent as $id => $p ) {
-			$d    = 1;
-			$seen = array( $id => true );
-			$cur  = $p;
-			while ( $cur > 0 && isset( $parent[ $cur ] ) && ! isset( $seen[ $cur ] ) && $d < 20 ) {
-				$seen[ $cur ] = true;
-				++$d;
-				$cur = $parent[ $cur ];
-			}
-			$out[ $id ] = $d;
-		}
-		return $out;
-	}
-
-	/**
-	 * 新しい語を足してよい親（id。0 は一番上）。
-	 * 親子のある分類では、今ある深さより浅い語の下だけ（一番上の見出しは足さない）。親子のない分類は一番上だけ。
-	 *
-	 * @param list<array{id:int,name:string,parent:int}> $terms
-	 * @return list<int>
-	 */
-	public static function allowed_parents( array $terms, bool $hierarchical ): array {
-		if ( ! $hierarchical ) {
-			return array( 0 );
-		}
-		$depths = self::depths( $terms );
-		$max    = array() === $depths ? 1 : max( $depths );
-		if ( $max <= 1 ) {
-			return array( 0 );
-		}
-		$out = array();
-		foreach ( $depths as $id => $d ) {
-			if ( $d < $max ) {
-				$out[] = (int) $id;
-			}
-		}
-		return $out;
+		return $hierarchical && in_array( $parent, array_map( 'intval', array_column( $terms, 'id' ) ), true );
 	}
 
 	/**
@@ -209,31 +166,9 @@ final class TermService {
 		$slug   = (string) ( $in['slug'] ?? '' );
 		$terms  = self::rows( $taxonomy );
 
-		$allowed = self::allowed_parents( $terms, (bool) $tax->hierarchical );
-		if ( ! in_array( $parent, $allowed, true ) ) {
-			$names = array_column( $terms, 'name', 'id' );
-			$list  = array_map(
-				static fn( int $id ) => array(
-					'id'   => $id,
-					'name' => 0 === $id ? '（一番上）' : (string) ( $names[ $id ] ?? '' ),
-				),
-				$allowed
-			);
-			$msg   = 0 === $parent ? 'この分類では、一番上（見出し）の語は足せません。parent に親の語の id を入れてください' : 'この親の下には足せません。parent は allowed_parents の id にしてください';
-			throw new DomainError(
-				'INPUT-001',
-				'parent not allowed: ' . $parent,
-				false,
-				$msg,
-				array(
-					array(
-						'path'            => 'parent',
-						'code'            => 'parent',
-						'message'         => $msg,
-						'allowed_parents' => $list,
-					),
-				)
-			);
+		if ( ! self::valid_parent( $terms, (bool) $tax->hierarchical, $parent ) ) {
+			$msg = $tax->hierarchical ? '親の語が見つかりません。parent は、この分類の語の id（list-post-types の terms の id）にするか、一番上に足すなら 0 にしてください' : 'この分類には親子がありません。parent は 0 にするか、省いてください';
+			throw new DomainError( 'INPUT-001', 'parent not found: ' . $parent, false, $msg, array( self::detail( 'parent', 'parent', $msg ) ) );
 		}
 
 		$found = self::find_similar( $terms, $name, $parent );
@@ -259,10 +194,6 @@ final class TermService {
 		if ( '' !== $slug && get_term_by( 'slug', $slug, $taxonomy ) ) {
 			throw new DomainError( 'INPUT-001', 'slug in use', false, 'この slug は、ほかの語で使われています。別の slug にするか、slug を省いてください', array( self::detail( 'slug', 'slug_in_use', 'この slug は、ほかの語で使われています' ) ) );
 		}
-		if ( self::added_since( time() - DAY_IN_SECONDS ) >= self::DAILY_MAX ) {
-			throw new DomainError( 'TERM-003', 'daily limit ' . self::DAILY_MAX );
-		}
-
 		$args = array( 'parent' => $parent );
 		if ( '' !== $slug ) {
 			$args['slug'] = $slug;
@@ -318,26 +249,6 @@ final class TermService {
 			'code'    => $code,
 			'message' => $message,
 		);
-	}
-
-	/** その時刻より後に MCP で足した語の数（すべての分類）。 */
-	public static function added_since( int $since ): int {
-		$ids = get_terms(
-			array(
-				'taxonomy'   => array_values( get_taxonomies() ),
-				'hide_empty' => false,
-				'fields'     => 'ids',
-				'meta_query' => array( // phpcs:ignore WordPress.DB.SlowDBQuery
-					array(
-						'key'     => self::META_AT,
-						'value'   => $since,
-						'compare' => '>',
-						'type'    => 'NUMERIC',
-					),
-				),
-			)
-		);
-		return is_array( $ids ) ? count( $ids ) : 0;
 	}
 
 	/**

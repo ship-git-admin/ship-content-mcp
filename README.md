@@ -8,7 +8,7 @@
 - 制作方針は、管理画面に自然な文章で書きます（サイト共通・投稿タイプ別）。
 - 公開・予約・削除・ACF の定義の変更・テーマやプラグインの変更は、できません。
 
-> 版 0.9.13。PM の試運用の前の段階です。
+> 版 0.9.14。PM の試運用の前の段階です。
 
 ## 必要なもの
 
@@ -103,7 +103,7 @@ HTTPS のサイトでは、WordPress の Application Password でも接続でき
 | `ship-content-validate-draft` | 保存の前に確かめる（書かない。誤り・消える内容・差分） |
 | `ship-content-create-draft` | 下書きを作る（状態は必ず下書き。読んだ制作方針の版 `policy_version` が要る） |
 | `ship-content-update-draft` | 下書きを直す（指定した部分だけ。消す変更は `allow_removals` が要る） |
-| `ship-content-add-term` | 分類の語を足す（記事に合う語がないときだけ。親の下にだけ。同じ語は作らず返し、似た語があれば候補を返す。基本設定で止められる） |
+| `ship-content-add-term` | 分類の語を足す（記事に合う語がないときだけ。見出しの親も。同じ語は作らず返し、似た語があれば候補を返す。基本設定で止められる） |
 | `ship-content-get-upload-url` | 写真のアップロード用 URL（30分・1回）と curl のコマンド。コマンドを実行できる AI はこれがいちばん簡単 |
 | `ship-content-import-image-url` | 誰でも開ける写真の URL から取り込む（サイトの中・内側のネットワークの宛先は断る） |
 | `ship-content-prepare-upload`・`ship-content-upload-chunk`・`ship-content-finish-upload` | 写真の分割転送（JPEG・PNG・WebP。返事の `how_to_send` のコマンドの出力をそのまま渡す。位置情報などは消してから登録） |
