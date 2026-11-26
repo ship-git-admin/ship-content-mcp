@@ -45,7 +45,26 @@ final class UploadEndpoint {
 	}
 
 	public static function url( string $ticket ): string {
-		return rest_url( Consts::NS . '/upload/' . $ticket );
+		return self::as_requested( rest_url( Consts::NS . '/upload/' . $ticket ) );
+	}
+
+	/**
+	 * AI がつないできたドメイン・http か https のまま返す（0.9.21）。
+	 * サイトの URL（siteurl）とは別のドメインの入口（https の本番ドメインと、http の動作確認 URL など）でつないだとき、
+	 * siteurl のドメインに https を付けた URL を返すと、証明書のないドメインになって写真を送れなかったため。
+	 * ドメインは、この WordPress に届いたリクエストの Host（名前の形だけ確かめる）。返す相手は同じ AI なので、偽っても本人にしか効かない。
+	 */
+	public static function as_requested( string $url ): string {
+		$host = isset( $_SERVER['HTTP_HOST'] ) ? strtolower( trim( (string) wp_unslash( $_SERVER['HTTP_HOST'] ) ) ) : '';
+		if ( '' === $host || ! preg_match( '/^[a-z0-9.-]+(:\d{1,5})?$/', $host ) ) {
+			return $url;
+		}
+		$parts = wp_parse_url( $url );
+		if ( ! is_array( $parts ) || empty( $parts['host'] ) ) {
+			return $url;
+		}
+		$scheme = is_ssl() ? 'https' : 'http';
+		return $scheme . '://' . $host . ( $parts['path'] ?? '/' ) . ( isset( $parts['query'] ) ? '?' . $parts['query'] : '' );
 	}
 
 	/**

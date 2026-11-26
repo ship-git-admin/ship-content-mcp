@@ -3,7 +3,7 @@ Contributors: shipinc
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.9.20
+Stable tag: 0.9.21
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -17,6 +17,9 @@ WordPress 側では AI を呼びません。公開・予約・削除・ACF の�
 読み取り（投稿タイプ・制作方針・入力欄の構造・記事）、下書きの検証・作成・修正、分類の語の追加、写真の登録（アップロード用 URL・分割転送・URL からの取り込み）のツールがあります。
 
 == Changelog ==
+
+= 0.9.21 =
+* 写真の登録用 URL（get-upload-url）を、AI がつないできたドメインのまま返すようにした（https の入口でつなぐと、証明書のないドメインの URL になって送れなかった）。get-post の view の写真に大きさ（横×縦）を付けた。
 
 = 0.9.20 =
 * get-post に view（画面に出る値だけを欄の名前で並べたもの）を足した。見本の記事の組み立てを AI が読み違えないため。条件で画面に出ない欄に値を入れたときだけ知らせるようにした。

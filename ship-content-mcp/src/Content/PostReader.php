@@ -273,7 +273,7 @@ final class PostReader {
 			case 'image':
 			case 'file':
 				$id = is_array( $v ) ? (int) ( $v['ID'] ?? ( $v['id'] ?? 0 ) ) : ( is_scalar( $v ) ? (int) $v : 0 );
-				return $id > 0 ? '#' . $id : null;
+				return $id > 0 ? '#' . $id . self::image_size( $id ) : null;
 			case 'gallery':
 			case 'relationship':
 			case 'post_object':
@@ -298,6 +298,19 @@ final class PostReader {
 				$s = trim( str_replace( "\r\n", "\n", (string) $v ) );
 				return '' === $s ? null : $s;
 		}
+	}
+
+	/**
+	 * 写真の大きさ（「（横1024×縦439）」の形。0.9.21）。見本の写真の縦横比を AI が確かめるため。分からなければ空。
+	 */
+	private static function image_size( int $id ): string {
+		if ( ! function_exists( 'wp_get_attachment_metadata' ) ) {
+			return '';
+		}
+		$m = wp_get_attachment_metadata( $id );
+		$w = is_array( $m ) ? (int) ( $m['width'] ?? 0 ) : 0;
+		$h = is_array( $m ) ? (int) ( $m['height'] ?? 0 ) : 0;
+		return ( $w > 0 && $h > 0 ) ? '（横' . $w . '×縦' . $h . '）' : '';
 	}
 
 	/**
