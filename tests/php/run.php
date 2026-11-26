@@ -219,6 +219,38 @@ $check(
 	str_contains( $pt_src, 'public static function taxonomies_with_terms(' ) && str_contains( $abil_src, "'taxonomies' => PostTypes::taxonomies_with_terms( \$name )," )
 	&& 3 === substr_count( $abil_src, 'self::taxonomy_warnings(' ) && str_contains( $steps, 'taxonomies[].terms' ) && str_contains( $steps, 'taxonomy_terms' )
 );
+// 分類の語を足す（0.9.13）。
+$TS    = \ShipContentMcp\Content\TermService::class;
+$works = array(
+	array( 'id' => 20, 'name' => '施工部位で選ぶ', 'parent' => 0 ),
+	array( 'id' => 12, 'name' => '外壁塗装', 'parent' => 20 ),
+	array( 'id' => 18, 'name' => 'その他', 'parent' => 20 ),
+	array( 'id' => 21, 'name' => 'エリアから選ぶ', 'parent' => 0 ),
+	array( 'id' => 22, 'name' => '架空市', 'parent' => 21 ),
+);
+$check( '分類の語：親子のある分類は、見出しの下にだけ足せる（一番上は不可）', array( 20, 21 ) === $TS::allowed_parents( $works, true ) && array( 0 ) === $TS::allowed_parents( array( array( 'id' => 1, 'name' => 'お知らせ', 'parent' => 0 ) ), true ) && array( 0 ) === $TS::allowed_parents( array(), true ) && array( 0 ) === $TS::allowed_parents( $works, false ) );
+$check( '分類の語：深さ（親の輪があっても止まる）', array( 1 => 2, 2 => 2 ) === $TS::depths( array( array( 'id' => 1, 'name' => 'a', 'parent' => 2 ), array( 'id' => 2, 'name' => 'b', 'parent' => 1 ) ) ) && 2 === $TS::depths( $works )[22] );
+$f1 = $TS::find_similar( $works, '架空市', 21 );
+$f2 = $TS::find_similar( $works, '架空', 21 );
+$f3 = $TS::find_similar( $works, '見本町', 21 );
+$f4 = $TS::find_similar( $works, 'その他', 21 );
+$f5 = $TS::find_similar( $works, ' 外壁塗装 ', 20 );
+$check( '分類の語：同じ親の同じ名前はそれを返し、似た名前（含む・別の親の同じ名前）は候補にする', 22 === ( $f1['same']['id'] ?? 0 ) && null === $f2['same'] && array( 22 ) === array_column( $f2['similar'], 'id' ) && null === $f3['same'] && array() === $f3['similar'] && array( 18 ) === array_column( $f4['similar'], 'id' ) && 12 === ( $f5['same']['id'] ?? 0 ) );
+$bad = 0;
+foreach ( array( '', '   ', str_repeat( 'あ', 41 ), '<b>市</b>', 'a&b', "a\x01b" ) as $n ) {
+	try {
+		$TS::clean_name( $n );
+	} catch ( \ShipContentMcp\Core\DomainError $e ) {
+		$bad += 'INPUT-001' === $e->error_code() ? 1 : 0;
+	}
+}
+$check( '分類の語：名前を整え、使えない名前は INPUT-001', '野々市 市' === $TS::clean_name( "　野々市　 市 " ) && 6 === $bad );
+$check(
+	'分類の語を足すツール（add-term）：一覧・手順・空の知らせ・最初の返事・設定・誤りのコード',
+	in_array( 'ship-content/add-term', \ShipContentMcp\MCP\Abilities::TOOLS, true ) && str_contains( $steps, 'add-term' ) && str_contains( $steps, 'can_add_terms' ) && str_contains( $abil_src, 'add-term で足せます' )
+	&& str_contains( $pt_src, "\$row['can_add_terms'] = \$row['public'] && TermService::enabled() && self::writable( \$post_type );" ) && str_contains( $set_src, "'allow_add_terms'        => true," )
+	&& 'ai' === ( new \ShipContentMcp\Core\DomainError( 'TERM-002' ) )->who_fixes() && 'admin' === ( new \ShipContentMcp\Core\DomainError( 'TERM-001' ) )->who_fixes() && str_contains( $abil_src, "'Add a category / taxonomy term" )
+);
 $us_src = (string) file_get_contents( __DIR__ . '/../../ship-content-mcp/src/Media/UploadService.php' );
 $check( '写真の URL から取り込む：wp_safe_remote_get・http(s) だけ・大きさの上限・中身で判定・ホスト名だけ記録', str_contains( $us_src, 'wp_safe_remote_get(' ) && str_contains( $us_src, "array( 'http', 'https' )" ) && str_contains( $us_src, 'wp_http_validate_url( $url )' ) && str_contains( $us_src, "'limit_response_size' => \$max + 1" ) && str_contains( $us_src, 'ImageSniff::sniff( substr( $body, 0, 16 ) )' ) && in_array( 'ship-content/import-image-url', \ShipContentMcp\MCP\Abilities::TOOLS, true ) );
 

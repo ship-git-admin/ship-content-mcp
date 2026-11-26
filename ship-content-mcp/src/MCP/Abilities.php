@@ -18,6 +18,7 @@ use ShipContentMcp\ACF\SchemaReader;
 use ShipContentMcp\Content\DraftService;
 use ShipContentMcp\Content\PostReader;
 use ShipContentMcp\Content\PostTypes;
+use ShipContentMcp\Content\TermService;
 use ShipContentMcp\Core\Consts;
 use ShipContentMcp\Core\DomainError;
 use ShipContentMcp\Core\Settings;
@@ -43,11 +44,12 @@ final class Abilities {
 	public const UPLOAD_CHUNK    = 'ship-content/upload-chunk';
 	public const FINISH_UPLOAD   = 'ship-content/finish-upload';
 	public const IMPORT_IMAGE_URL = 'ship-content/import-image-url';
+	public const ADD_TERM        = 'ship-content/add-term';
 
 	/** 最初に呼ぶ list-post-types の返事に付ける、全部の手順（AI がツールを探さなくても、写真まで進めるように。0.9.5）。 */
 	public const STEPS = array(
 		'1. この返事の data.creation_policy（サイト管理者の制作方針）を読む。記事の書き方・文字数・写真の並べ方は、これに従う（迷ったら PM に確認）。次に get-acf-schema で入力欄を読む（参考にする記事は search-posts・get-post）。',
-		'2. 分類（カテゴリなど）を決める。post_types[].taxonomies[].terms の語（id）から、制作方針と記事の中身に合うものを選び、create-draft の taxonomies（kind=taxonomy_terms）に入れる。公開されない分類（public=false）は、制作方針に書いてなければ付けない。合う語がなければ PM に聞く（新しい語は作れない）。',
+		'2. 分類（カテゴリなど）を決める。post_types[].taxonomies[].terms の語（id）から、制作方針と記事の中身に合うものを選び、create-draft の taxonomies（kind=taxonomy_terms）に入れる。公開されない分類（public=false）は、制作方針に書いてなければ付けない。合う語がなければ、その分類の can_add_terms が true なら add-term で足す（parent は add_under の id。同じ語はそのまま返り、似た語があれば TERM-002 で候補が返るので、それを使うか PM に確かめる）。足した語は PM への報告に書く。can_add_terms が false なら PM に聞く。',
 		'3. 写真・画像があれば、1枚ずつメディアに登録する。誰でも開ける写真の URL があれば import-image-url。手元のファイルは get-upload-url（返ってきた curl を実行）。コマンドでネットワークにつなげないときは prepare-upload → upload-chunk → finish-upload（返事の how_to_send のコマンドの出力をそのまま渡す。base64 を自分で書き写さない）。返った attachment_id を、画像の欄や featured_media に入れる。うまくいかないときは、この返事の meta.photos（写真の出どころ別の手順・取り込めないとき）に従う。',
 		'4. validate-draft で確かめ、制作方針に合っているかも自分で確かめて、PM に見せてから、create-draft（新しい下書き）か update-draft（下書きを直す）で保存する。保存には policy_version（creation_policy.version）を付ける。方針が変わっていると保存されない（POLICY-002）ので、get-creation-policy で読み直し、方針に合わせてから送り直す。',
 		'5. 保存した後は get-post で読み戻す。',
@@ -88,7 +90,7 @@ final class Abilities {
 	}
 
 	/** 自作サーバーに載せるツール（この順で一覧に出る）。 */
-	public const TOOLS = array( self::LIST_POST_TYPES, self::GET_POLICY, self::GET_ACF_SCHEMA, self::SEARCH_POSTS, self::GET_POST, self::VALIDATE_DRAFT, self::CREATE_DRAFT, self::UPDATE_DRAFT, self::GET_UPLOAD_URL, self::IMPORT_IMAGE_URL, self::PREPARE_UPLOAD, self::UPLOAD_CHUNK, self::FINISH_UPLOAD );
+	public const TOOLS = array( self::LIST_POST_TYPES, self::GET_POLICY, self::GET_ACF_SCHEMA, self::SEARCH_POSTS, self::GET_POST, self::VALIDATE_DRAFT, self::CREATE_DRAFT, self::UPDATE_DRAFT, self::ADD_TERM, self::GET_UPLOAD_URL, self::IMPORT_IMAGE_URL, self::PREPARE_UPLOAD, self::UPLOAD_CHUNK, self::FINISH_UPLOAD );
 
 	/** 成功を記録しないツール（分割の数だけ行が増えるため。失敗は記録する）。 */
 	private const QUIET_ON_SUCCESS = array( self::UPLOAD_CHUNK );
@@ -430,6 +432,43 @@ final class Abilities {
 			array( self::class, 'update_draft' ),
 			$meta( false, true )
 		);
+		self::add(
+			self::ADD_TERM,
+			'分類の語を足す',
+			'Add a category / taxonomy term（分類の語を足す。エリアの地名など）。記事に合う語が list-post-types の terms にないときだけ使う（先に terms から探す。can_add_terms が true の分類だけ）。親子のある分類では、親（parent に add_under の id）の下に足す（一番上の見出しの語は足せない）。同じ親の下に同じ名前があれば、作らずにそれを返す。似た語があると TERM-002 で候補（similar_terms）が返るので、合う語を使うか、PM に確かめてから new_anyway=true で送り直す。slug はほかの語に合わせて英小文字・数字・ハイフン（地名はローマ字。例：chuo）。返った term.id を create-draft の taxonomies か update-draft の changes（kind=taxonomy_terms）の term_ids に入れる。足した語は PM への報告に書く。' . self::UNTRUSTED,
+			array(
+				'type'                 => 'object',
+				'properties'           => array(
+					'post_type'  => $post_type,
+					'taxonomy'   => $taxonomy + array( 'description' => '分類の name（list-post-types の taxonomies の name。例：works_cat）。' ),
+					'name'       => array(
+						'type'        => 'string',
+						'minLength'   => 1,
+						'maxLength'   => TermService::NAME_MAX,
+						'description' => '語の名前（例：中央区）。ほかの語の書き方に合わせる。',
+					),
+					'parent'     => array(
+						'type'        => 'integer',
+						'minimum'     => 0,
+						'description' => '親の語の id（list-post-types の taxonomies の add_under のどれか）。親子のない分類は 0 か省く。',
+					),
+					'slug'       => array(
+						'type'        => 'string',
+						'maxLength'   => 60,
+						'pattern'     => '^[a-z0-9]+(-[a-z0-9]+)*$',
+						'description' => '任意。URL に使う英小文字・数字・ハイフン（地名はローマ字。例：chuo）。省くと名前から作る（日本語のまま）。',
+					),
+					'new_anyway' => array(
+						'type'        => 'boolean',
+						'description' => '似た語があっても足すとき（TERM-002 の候補を PM に見せて、足すと決めたときだけ true）。',
+					),
+				),
+				'required'             => array( 'post_type', 'taxonomy', 'name' ),
+				'additionalProperties' => false,
+			),
+			array( self::class, 'add_term' ),
+			$meta( false )
+		);
 
 		$session = array(
 			'type'      => 'string',
@@ -645,7 +684,7 @@ final class Abilities {
 				$log = array_merge( $log, $out['log'] );
 			}
 			if ( ! in_array( $tool, self::QUIET_ON_SUCCESS, true ) ) {
-				AuditLog::write( 'tool', 'ok', '', '', $log );
+				AuditLog::write( 'tool', 'ok', '', (string) ( $log['detail'] ?? '' ), $log );
 			}
 			return Envelope::ok( $out['data'], $out['warnings'] ?? array(), $out['meta'] ?? array() );
 		} catch ( DomainError $e ) {
@@ -875,7 +914,7 @@ final class Abilities {
 		if ( array() === $empty ) {
 			return array();
 		}
-		return array( '分類「' . implode( '」「', $empty ) . '」が空です（サイトの一覧や絞り込みに出にくくなります）。list-post-types の taxonomies の terms から、制作方針と記事に合う語を選んで、taxonomies（kind=taxonomy_terms）で付けてください。合う語がなければ PM に聞いてください。' );
+		return array( '分類「' . implode( '」「', $empty ) . '」が空です（サイトの一覧や絞り込みに出にくくなります）。list-post-types の taxonomies の terms から、制作方針と記事に合う語を選んで、taxonomies（kind=taxonomy_terms）で付けてください。合う語がなければ、can_add_terms が true の分類は add-term で足せます（足せないときは PM に聞いてください）。' );
 	}
 
 	/**
@@ -977,5 +1016,13 @@ final class Abilities {
 	 */
 	public static function import_image_url( array $input ): array {
 		return ( new UploadService() )->import_url( $input );
+	}
+
+	/**
+	 * @param array<string,mixed> $input
+	 * @return array<string,mixed>
+	 */
+	public static function add_term( array $input ): array {
+		return TermService::add( $input );
 	}
 }

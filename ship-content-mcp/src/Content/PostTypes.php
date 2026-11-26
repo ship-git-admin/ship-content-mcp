@@ -131,7 +131,7 @@ final class PostTypes {
 	public const TERMS_MAX = 300;
 
 	/**
-	 * 分類と、選べる語の一覧（list-post-types の返事。AI が分類を付けられるように。0.9.12）。
+	 * 分類と、選べる語の一覧（list-post-types の返事。AI が分類を付けられるように。0.9.12）。足せるか（can_add_terms・add_under。0.9.13）。
 	 *
 	 * @return list<array<string,mixed>>
 	 */
@@ -157,6 +157,11 @@ final class PostTypes {
 			}
 			$row['public'] = $tax ? (bool) $tax->public : false;
 			$row['terms']  = array_slice( $list, 0, self::TERMS_MAX );
+			// 合う語がないとき、AI が add-term で足せるか（0.9.13）。足せるなら、足してよい親（add_under。0 は一番上）。
+			$row['can_add_terms'] = $row['public'] && TermService::enabled() && self::writable( $post_type );
+			if ( $row['can_add_terms'] ) {
+				$row['add_under'] = TermService::allowed_parents( $list, (bool) $row['hierarchical'] );
+			}
 			if ( count( $list ) > self::TERMS_MAX ) {
 				$row['terms_truncated'] = true;
 			}

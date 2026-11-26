@@ -21,3 +21,4 @@ require __DIR__ . '/../../ship-content-mcp/src/MCP/Abilities.php';
 require __DIR__ . '/../../ship-content-mcp/src/Media/ImageSniff.php';
 require __DIR__ . '/../../ship-content-mcp/src/Media/UploadService.php';
 require __DIR__ . '/../../ship-content-mcp/src/Content/StructureLock.php';
+require __DIR__ . '/../../ship-content-mcp/src/Content/TermService.php';

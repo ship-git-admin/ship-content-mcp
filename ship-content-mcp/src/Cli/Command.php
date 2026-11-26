@@ -14,6 +14,7 @@ use ShipContentMcp\Admin\Diagnostics;
 use ShipContentMcp\Content\DraftService;
 use ShipContentMcp\Content\PostTypes;
 use ShipContentMcp\Content\StructureLock;
+use ShipContentMcp\Content\TermService;
 use ShipContentMcp\Core\Consts;
 use ShipContentMcp\Core\Settings;
 use ShipContentMcp\MCP\Abilities;
@@ -122,13 +123,31 @@ final class Command {
 				\WP_CLI::log( '写真の転送の記録（期限切れ・古い仕上げ済み・試験中の仕上げていないもの）を ' . $purged . ' 件消しました' );
 			}
 		}
+		// 試験中に MCP で足した分類の語（試験の印つき。記事が付いていないものだけ消す）。
+		$test_terms = get_terms(
+			array(
+				'taxonomy'   => array_values( get_taxonomies() ),
+				'hide_empty' => false,
+				'meta_key'   => TermService::META_TEST, // phpcs:ignore WordPress.DB.SlowDBQuery
+				'meta_value' => '1', // phpcs:ignore WordPress.DB.SlowDBQuery
+			)
+		);
+		foreach ( is_array( $test_terms ) ? $test_terms : array() as $t ) {
+			if ( $t instanceof \WP_Term && '' !== (string) get_term_meta( $t->term_id, TermService::META_AT, true ) ) {
+				$rows[] = array(
+					'ID'        => $t->term_id,
+					'post_type' => 'term:' . $t->taxonomy,
+					'title'     => $t->name,
+				);
+			}
+		}
 		if ( array() === $rows ) {
-			\WP_CLI::success( '試験の下書き・写真はありません' );
+			\WP_CLI::success( '試験の下書き・写真・分類の語はありません' );
 			return;
 		}
 		\WP_CLI\Utils\format_items( 'table', $rows, array( 'ID', 'post_type', 'title' ) );
 		if ( empty( $assoc['yes'] ) ) {
-			\WP_CLI::log( count( $rows ) . ' 件あります。--yes を付けると消します。' );
+			\WP_CLI::log( count( $rows ) . ' 件あります。--yes を付けると消します（分類の語は、試験でない記事が付いていないものだけ）。' );
 			return;
 		}
 		$n = 0;
@@ -137,12 +156,20 @@ final class Command {
 				if ( wp_delete_attachment( (int) $r['ID'], true ) ) {
 					++$n;
 				}
+			} elseif ( str_starts_with( (string) $r['post_type'], 'term:' ) ) {
+				continue;
 			} elseif ( 'draft' === get_post_status( $r['ID'] ) && wp_delete_post( (int) $r['ID'], true ) ) {
 				++$n;
 			}
 		}
+		// 試験の下書きを消した後で、記事が付いていない試験の語を消す。
+		foreach ( TermService::test_terms_without_posts() as $t ) {
+			if ( true === wp_delete_term( $t->term_id, $t->taxonomy ) ) {
+				++$n;
+			}
+		}
 		AuditLog::write( 'admin', 'ok', '', 'cleanup-tests deleted ' . $n . ' items', array( 'auth' => 'cli' ) );
-		\WP_CLI::success( $n . ' 件の試験の下書き・写真を消しました' );
+		\WP_CLI::success( $n . ' 件の試験の下書き・写真・分類の語を消しました' );
 	}
 
 	/**
@@ -638,7 +665,12 @@ final class Command {
 				$a = StructureLock::current( $pt );
 				$this->check( 'T61 構造の記録が安定：' . $pt, array() !== $a && StructureLock::current( $pt ) === $a, count( $a ) . ' groups' );
 			}
+			foreach ( PostTypes::taxonomies_with_terms( $pt ) as $tx ) {
+				$ok = empty( $tx['can_add_terms'] ) || ( array() !== ( $tx['add_under'] ?? array() ) && ( ! $tx['hierarchical'] || array( 0 ) === $tx['add_under'] || ! in_array( 0, $tx['add_under'], true ) ) );
+				$this->check( 'T62 分類の語を足せる親が決まる：' . $pt . '/' . $tx['name'], $ok, ! empty( $tx['can_add_terms'] ) ? 'add_under=' . implode( ',', $tx['add_under'] ) : '足せない（' . ( $tx['public'] ? '設定・状態' : '公開されない分類' ) . '）' );
+			}
 		}
+		$this->check( 'T63 分類の語の名前の比べ方（全角・半角・空白・大文字小文字）', TermService::key( 'ＡＢＣ　市' ) === TermService::key( 'abc市' ) && TermService::key( 'ﾉﾉｲﾁ' ) === TermService::key( 'ノノイチ' ) );
 
 		// --- IP ---
 		$this->check( 'T50 IP の判定', IpRules::allowed( '192.0.2.10', array( '192.0.2.0/24' ) ) && ! IpRules::allowed( '198.51.100.1', array( '192.0.2.0/24' ) ) && IpRules::allowed( '2001:db8::1', array( '2001:db8::/32' ) ) && IpRules::allowed( '203.0.113.5', array() ) && ! IpRules::is_valid_entry( '1.2.3.4/33' ) );

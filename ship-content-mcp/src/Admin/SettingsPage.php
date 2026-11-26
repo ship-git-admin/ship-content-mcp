@@ -128,6 +128,8 @@ final class SettingsPage {
 		self::checkbox_row( 'auth_app_password', 'Application Password で認証する', $s['auth_app_password'], 'HTTPS のサイトだけで使えます（WordPress の決まり）。' );
 		echo '<tr><th scope="row"><label for="scm-max">写真の上限</label></th><td><input id="scm-max" type="number" name="media_max_mb" min="1" max="100" value="' . esc_attr( (string) $s['media_max_mb'] ) . '" class="small-text"> MB<p class="description">写真は JPEG・PNG・WebP だけ受け付けます（URL からの取得はしません）。</p></td></tr>';
 		self::checkbox_row( 'structure_strict', '入力欄が変わったら書き込みを止める', $s['structure_strict'], '「試験合格」「稼働」の投稿タイプで、ACF の入力欄の構造が、確かめた後に変わったら、確かめ直すまで AI の書き込みを止めます。切（初期）なら止めずに、AI と「診断」に知らせます（AI は保存のたびに今の構造で確かめるので、形の合わない値は入りません）。' );
+		self::checkbox_row( 'allow_add_terms', 'AI が分類の語を足せる', $s['allow_add_terms'], '記事に合う分類の語（エリアの地名など）がないとき、AI が語を足せます。親子のある分類では親の下にだけ足し（一番上の見出しは足しません）、同じ語は作らず、似た語があれば AI が PM に確かめます。公開されない分類（システムタグなど）には足しません。24時間に ' . \ShipContentMcp\Content\TermService::DAILY_MAX . ' 件まで。テーマによっては、記事が公開される前でもサイトの絞り込みに出ます。' );
+		self::added_terms_row();
 		self::checkbox_row( 'strip_metadata', '写真の位置情報などを消す', $s['strip_metadata'], '撮影場所（GPS）・カメラの情報などのメタデータを、登録の前に消します（向きは写真に反映してから消します）。お客様の住所が分かってしまうのを防ぐため、有効のままにしてください。' );
 		echo '<tr><th scope="row">メディアの公開範囲</th><td><p class="description" style="color:#b32d2e">' . esc_html( \ShipContentMcp\Media\UploadService::PUBLIC_NOTICE ) . '</p></td></tr>';
 		echo '<tr><th scope="row"><label for="scm-ip">接続元の制限</label></th><td><textarea id="scm-ip" name="ip_allowlist" rows="4" cols="40" class="code">' . esc_textarea( implode( "\n", $s['ip_allowlist'] ) ) . '</textarea><p class="description">1行に1つ（IP または CIDR）。空なら制限しません。サーバーが受け取った接続元（REMOTE_ADDR）だけを見ます。</p></td></tr>';
@@ -507,7 +509,7 @@ final class SettingsPage {
 			'post_types'   => array(),
 			'ip_allowlist' => preg_split( '/\R/', (string) wp_unslash( $_POST['ip_allowlist'] ?? '' ) ),
 		);
-		foreach ( array( 'enabled', 'disable_default_server', 'reject_privileged', 'auth_oauth', 'oauth_remote_clients', 'auth_token', 'token_http', 'auth_signature', 'auth_app_password', 'strip_metadata', 'structure_strict' ) as $k ) {
+		foreach ( array( 'enabled', 'disable_default_server', 'reject_privileged', 'auth_oauth', 'oauth_remote_clients', 'auth_token', 'token_http', 'auth_signature', 'auth_app_password', 'strip_metadata', 'structure_strict', 'allow_add_terms' ) as $k ) {
 			$in[ $k ] = ! empty( $_POST[ $k ] );
 		}
 		$in['oauth_invite_days'] = isset( $_POST['oauth_invite_days'] ) ? absint( $_POST['oauth_invite_days'] ) : 7;
@@ -735,6 +737,23 @@ final class SettingsPage {
 			}
 			echo '</li>';
 		}
+	}
+
+	/** AI が足した分類の語（新しい順に10件。編集・削除の画面へのリンク）。 */
+	private static function added_terms_row(): void {
+		$terms = \ShipContentMcp\Content\TermService::recent( 10 );
+		if ( array() === $terms ) {
+			return;
+		}
+		$items = array();
+		foreach ( $terms as $t ) {
+			$tax   = get_taxonomy( $t->taxonomy );
+			$at    = (int) get_term_meta( $t->term_id, \ShipContentMcp\Content\TermService::META_AT, true );
+			$link  = get_edit_term_link( $t->term_id, $t->taxonomy );
+			$label = $t->name . '（' . ( $tax ? $tax->label : $t->taxonomy ) . ( $at > 0 ? '・' . wp_date( 'n/j G:i', $at ) : '' ) . '）';
+			$items[] = $link ? '<a href="' . esc_url( $link ) . '">' . esc_html( $label ) . '</a>' : esc_html( $label );
+		}
+		echo '<tr><th scope="row">AI が足した語</th><td><p>' . implode( '、', $items ) . '</p><p class="description">新しい順に10件。名前やスラッグを直す・消すときは、リンクから分類の画面を開いてください。</p></td></tr>'; // phpcs:ignore WordPress.Security.EscapeOutput -- 上で esc 済み
 	}
 
 	private static function checkbox_row( string $name, string $label, bool $checked, string $help ): void {
