@@ -3,7 +3,7 @@ Contributors: shipinc
 Requires at least: 6.9
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 0.9.22
+Stable tag: 0.9.23
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -17,6 +17,9 @@ WordPress 側では AI を呼びません。公開・予約・削除・ACF の�
 読み取り（投稿タイプ・制作方針・入力欄の構造・記事）、下書きの検証・作成・修正、分類の語の追加、写真の登録（アップロード用 URL・分割転送・URL からの取り込み）のツールがあります。
 
 == Changelog ==
+
+= 0.9.23 =
+* 制作方針の1つの文の上限を 10000字から 20000字に上げた。管理画面の入力欄にも同じ上限を付けた（超えた分が黙って切られないように）。
 
 = 0.9.22 =
 * get-upload-url に local_path（手元の写真の場所）を渡すと、そのまま実行できる curl のコマンドを返すようにした。最初の手順を「下書きは制作担当者の確認を待たずに保存して報告する」にした。

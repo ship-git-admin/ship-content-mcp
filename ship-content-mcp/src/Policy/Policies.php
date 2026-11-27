@@ -16,7 +16,7 @@ defined( 'ABSPATH' ) || exit;
 final class Policies {
 
 	public const OPTION     = 'ship_content_mcp_policies';
-	public const MAX_LENGTH = 10000;
+	public const MAX_LENGTH = 20000; // 1つの方針の上限（字）。管理画面の入力欄の maxlength も同じ。0.9.23 で 10000 から上げた。
 	public const HISTORY    = 20;
 
 	/**

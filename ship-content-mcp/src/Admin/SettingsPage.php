@@ -147,17 +147,17 @@ final class SettingsPage {
 		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
 		wp_nonce_field( 'ship_content_mcp_save_policies' );
 		echo '<input type="hidden" name="action" value="ship_content_mcp_save_policies">';
-		echo '<h2>サイト共通</h2><textarea name="site_policy" rows="6" class="large-text">' . esc_textarea( $p['site']['text'] ) . '</textarea>';
+		echo '<h2>サイト共通</h2><textarea name="site_policy" rows="6" class="large-text" maxlength="' . (int) Policies::MAX_LENGTH . '">' . esc_textarea( $p['site']['text'] ) . '</textarea>';
 		foreach ( $types as $name ) {
 			$obj = get_post_type_object( $name );
 			echo '<h2>' . esc_html( $obj ? $obj->label : $name ) . ' <code>' . esc_html( $name ) . '</code></h2>';
 			echo '<div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">';
-			echo '<textarea name="type_policy[' . esc_attr( $name ) . ']" rows="10" class="large-text" style="flex:1 1 420px">' . esc_textarea( $p['types'][ $name ]['text'] ?? '' ) . '</textarea>';
+			echo '<textarea name="type_policy[' . esc_attr( $name ) . ']" rows="10" class="large-text" maxlength="' . (int) Policies::MAX_LENGTH . '" style="flex:1 1 420px">' . esc_textarea( $p['types'][ $name ]['text'] ?? '' ) . '</textarea>';
 			echo '<details style="flex:1 1 360px;max-height:360px;overflow:auto;background:#fff;border:1px solid #c3c4c7;padding:8px"><summary>この投稿タイプの入力欄（参考・読み取り専用）</summary>';
 			self::schema_tree( $name );
 			echo '</details></div>';
 		}
-		echo '<p class="description">版：' . esc_html( (string) Policies::version() ) . '</p>';
+		echo '<p class="description">版：' . esc_html( (string) Policies::version() ) . '（それぞれ ' . esc_html( number_format( Policies::MAX_LENGTH ) ) . '字まで）</p>';
 		submit_button( '制作方針を保存' );
 		echo '</form>';
 		if ( array() !== $p['history'] ) {
